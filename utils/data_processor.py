@@ -126,41 +126,65 @@ class DataProcessor:
     
     def _standardize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """Map columns to standard names using fuzzy matching."""
-        standardized_df = pd.DataFrame()
-        
-        # Get available columns
-        available_cols = df.columns.tolist()
-        
-        for standard_name, possible_names in self.column_mappings.items():
-            matched_col = None
+        try:
+            standardized_df = pd.DataFrame()
             
-            # Exact match first
-            for possible_name in possible_names:
-                if possible_name in available_cols:
-                    matched_col = possible_name
-                    break
+            # Get available columns
+            available_cols = df.columns.tolist()
             
-            # Fuzzy match if no exact match
-            if matched_col is None:
-                for col in available_cols:
-                    for possible_name in possible_names:
-                        if possible_name in col or col in possible_name:
-                            matched_col = col
-                            break
-                    if matched_col:
+            for standard_name, possible_names in self.column_mappings.items():
+                matched_col = None
+                
+                # Exact match first
+                for possible_name in possible_names:
+                    if possible_name in available_cols:
+                        matched_col = possible_name
                         break
+                
+                # Fuzzy match if no exact match
+                if matched_col is None:
+                    for col in available_cols:
+                        for possible_name in possible_names:
+                            if possible_name in str(col).lower() or str(col).lower() in possible_name:
+                                matched_col = col
+                                break
+                        if matched_col:
+                            break
+                
+                # Add column if found and it's a single column
+                if matched_col and matched_col in df.columns:
+                    try:
+                        # Ensure we're only copying series data, not complex objects
+                        column_data = df[matched_col].copy()
+                        if isinstance(column_data, pd.Series):
+                            standardized_df[standard_name] = column_data
+                    except Exception as e:
+                        st.warning(f"Error mapping column '{matched_col}' to '{standard_name}': {str(e)}")
+                        continue
             
-            # Add column if found
-            if matched_col:
-                standardized_df[standard_name] = df[matched_col]
-        
-        # Add any remaining columns that weren't mapped
-        for col in available_cols:
-            if col not in [val for sublist in self.column_mappings.values() for val in sublist]:
-                if col not in standardized_df.columns:
-                    standardized_df[col] = df[col]
-        
-        return standardized_df
+            # Add any remaining columns that weren't mapped
+            mapped_cols = set()
+            for possible_names in self.column_mappings.values():
+                mapped_cols.update(possible_names)
+            
+            for col in available_cols:
+                if col not in mapped_cols and col not in standardized_df.columns:
+                    try:
+                        # Only add if it's a proper series
+                        column_data = df[col].copy()
+                        if isinstance(column_data, pd.Series):
+                            # Clean column name for consistency
+                            clean_col_name = self._clean_column_name(str(col))
+                            standardized_df[clean_col_name] = column_data
+                    except Exception as e:
+                        st.warning(f"Error adding unmapped column '{col}': {str(e)}")
+                        continue
+            
+            return standardized_df
+            
+        except Exception as e:
+            st.error(f"Error in column standardization: {str(e)}")
+            return df.copy()  # Return original if standardization fails
     
     def _clean_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Clean and validate the data."""
@@ -191,7 +215,10 @@ class DataProcessor:
         # Remove rows with no name
         if 'name' in cleaned_df.columns:
             cleaned_df = cleaned_df.dropna(subset=['name'])
+            # Convert to string first, then apply string operations
+            cleaned_df['name'] = cleaned_df['name'].astype(str)
             cleaned_df = cleaned_df[cleaned_df['name'].str.strip() != '']
+            cleaned_df = cleaned_df[cleaned_df['name'].str.strip() != 'nan']
         
         return cleaned_df
     

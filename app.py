@@ -15,6 +15,7 @@ from utils.visualizations import Visualizations
 from components.player_analysis import PlayerAnalysis
 from components.draft_simulator import DraftSimulator
 from components.team_analysis import TeamAnalysis
+from components.player_ranking import PlayerRanking
 
 # Page configuration
 st.set_page_config(
@@ -52,7 +53,7 @@ with st.sidebar:
     st.markdown("### Navigation")
     page = st.selectbox(
         "Select Analysis Module",
-        ["Data Upload", "Player Analysis", "Draft Simulator", "Team Analysis", "AI Insights", "Statistical Reports"]
+        ["Data Upload", "All Players Ranking", "Player Analysis", "Draft Simulator", "Team Analysis", "AI Insights", "Statistical Reports"]
     )
     
     st.markdown("---")
@@ -179,12 +180,16 @@ if page == "Data Upload":
             })
         
         sheet_df = pd.DataFrame(sheet_info)
-        st.dataframe(sheet_df, use_container_width=True)
+        st.dataframe(sheet_df, width='stretch')
         
         # Data preview
         if st.session_state.processed_data is not None:
             st.markdown("#### 👀 Data Preview")
-            st.dataframe(st.session_state.processed_data.head(10), use_container_width=True)
+            st.dataframe(st.session_state.processed_data.head(10), width='stretch')
+
+elif page == "All Players Ranking" and st.session_state.data_loaded:
+    player_ranking = PlayerRanking(st.session_state.processed_data)
+    player_ranking.render()
 
 elif page == "Player Analysis" and st.session_state.data_loaded:
     player_analysis = PlayerAnalysis(st.session_state.processed_data)
