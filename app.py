@@ -1058,6 +1058,10 @@ class DraftSimulator:
 
     def ai_draft_pick(self, team_index: int, available_players: pd.DataFrame) -> dict:
         """AI logic for drafting players."""
+        # Ensure team_index is within valid range for AI teams (0-8)
+        if team_index < 0 or team_index >= 9:
+            team_index = 0
+        
         team_roster = self.ai_teams[team_index]
         
         # Count positions on roster
@@ -1149,7 +1153,9 @@ class DraftSimulator:
             else:
                 # AI pick
                 if len(available_players) > 0:
-                    ai_pick = self.ai_draft_pick(team_index - 1 if team_index > 0 else 9, available_players)
+                    # Correctly map team_index to AI teams (team 0 is user, teams 1-9 map to ai_teams 0-8)
+                    ai_team_index = team_index - 1 if team_index > 0 else 8
+                    ai_pick = self.ai_draft_pick(ai_team_index, available_players)
                     if ai_pick:
                         draft_results.append({
                             'pick': pick_num,
@@ -1171,7 +1177,10 @@ class DraftSimulator:
                         if team_index == 0:
                             self.user_team.append(ai_pick)
                         else:
-                            self.ai_teams[team_index - 1].append(ai_pick)
+                            # Use the same AI team index mapping
+                            ai_team_index = team_index - 1 if team_index > 0 else 8
+                            if ai_team_index < 9:  # Safety check
+                                self.ai_teams[ai_team_index].append(ai_pick)
 
         return draft_results
 
