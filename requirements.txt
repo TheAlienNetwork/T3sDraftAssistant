@@ -10,5 +10,3 @@ beautifulsoup4==4.12.3
 openpyxl==3.1.4
 tenacity==8.2.3
 tqdm==4.66.4
-# optional XML parser, but keep a version with prebuilt wheels
-lxml==4.9.3
