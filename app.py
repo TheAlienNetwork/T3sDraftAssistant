@@ -1117,20 +1117,146 @@ class AdvancedFantasyAnalyzer:
 
             st.plotly_chart(fig, use_container_width=True)
 
-            # Comparison metrics
-            col1, col2, col3 = st.columns(3)
+            # Enhanced Positional Ranking Analysis
+            st.markdown("#### 🏆 Positional Ranking Analysis")
+            
+            # Key ranking metrics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            total_position_players = len(position_data)
+            higher_ranked = len(position_data[position_data['Position_Rank'] < player_rank])
+            lower_ranked = len(position_data[position_data['Position_Rank'] > player_rank])
+            percentile = ((len(position_data) - player_rank + 1) / len(position_data)) * 100
 
             with col1:
-                higher_ranked = len(position_data[position_data['Position_Rank'] < player_rank])
-                st.metric("Players Ranked Higher", higher_ranked)
+                st.metric("Position Rank", f"#{player_rank} of {total_position_players}", 
+                         help=f"This player ranks #{player_rank} among all {position} players")
 
             with col2:
-                lower_ranked = len(position_data[position_data['Position_Rank'] > player_rank])
-                st.metric("Players Ranked Lower", lower_ranked)
+                st.metric("Players Ranked Higher", higher_ranked,
+                         help=f"{higher_ranked} {position} players are ranked above this player")
 
             with col3:
-                percentile = ((len(position_data) - player_rank + 1) / len(position_data)) * 100
-                st.metric("Percentile Rank", f"{percentile:.0f}%")
+                st.metric("Players Ranked Lower", lower_ranked,
+                         help=f"{lower_ranked} {position} players are ranked below this player")
+
+            with col4:
+                # Enhanced percentile with tier information
+                if percentile >= 90:
+                    tier = "🥇 Elite Tier"
+                    tier_color = "#FFD700"
+                elif percentile >= 75:
+                    tier = "🥈 Top Tier"
+                    tier_color = "#C0C0C0"
+                elif percentile >= 50:
+                    tier = "🥉 Mid Tier"
+                    tier_color = "#CD7F32"
+                elif percentile >= 25:
+                    tier = "📊 Lower Tier"
+                    tier_color = "#666666"
+                else:
+                    tier = "⚠️ Bottom Tier"
+                    tier_color = "#FF6B6B"
+                
+                st.metric("Percentile Rank", f"{percentile:.0f}%",
+                         help=f"This player is better than {percentile:.0f}% of all {position} players")
+                st.markdown(f"<div style='text-align: center; color: {tier_color}; font-weight: bold; margin-top: 0.5rem;'>{tier}</div>", 
+                           unsafe_allow_html=True)
+            
+            # Positional comparison table with nearby players
+            st.markdown("#### 📋 Position Rankings Comparison")
+            
+            # Get players around this player's rank (±3 positions)
+            rank_window = 3
+            min_rank = max(1, player_rank - rank_window)
+            max_rank = min(total_position_players, player_rank + rank_window)
+            
+            nearby_players = position_data[
+                (position_data['Position_Rank'] >= min_rank) & 
+                (position_data['Position_Rank'] <= max_rank)
+            ].sort_values('Position_Rank')
+            
+            # Create comparison table
+            if len(nearby_players) > 1:
+                comparison_cols = st.columns([1, 3, 1, 1, 1])
+                
+                # Table headers
+                with comparison_cols[0]:
+                    st.markdown("**Rank**")
+                with comparison_cols[1]:
+                    st.markdown("**Player**")
+                with comparison_cols[2]:
+                    st.markdown("**Team**")
+                with comparison_cols[3]:
+                    st.markdown("**VBD**")
+                with comparison_cols[4]:
+                    st.markdown("**Draft Round**")
+                
+                st.markdown("---")
+                
+                # Player rows
+                for _, comp_player in nearby_players.iterrows():
+                    comp_cols = st.columns([1, 3, 1, 1, 1])
+                    
+                    # Highlight the current player
+                    is_current_player = comp_player['Player_Name'] == player_data['Player_Name']
+                    name_style = "**🎯 " if is_current_player else "**"
+                    name_end = "** ← YOU" if is_current_player else "**"
+                    
+                    with comp_cols[0]:
+                        rank_display = f"#{int(comp_player['Position_Rank'])}"
+                        if is_current_player:
+                            st.markdown(f"**🎯 {rank_display}**")
+                        else:
+                            st.markdown(rank_display)
+                    
+                    with comp_cols[1]:
+                        st.markdown(f"{name_style}{comp_player['Player_Name']}{name_end}")
+                    
+                    with comp_cols[2]:
+                        st.markdown(comp_player.get('Team', 'UNK'))
+                    
+                    with comp_cols[3]:
+                        vbd_val = comp_player.get('VBD_Value', 0)
+                        st.markdown(f"{vbd_val:.1f}")
+                    
+                    with comp_cols[4]:
+                        draft_round = comp_player.get('Draft_Round', 'TBD')
+                        st.markdown(f"{draft_round}")
+            
+            # Additional insights
+            st.markdown("#### 💡 Positional Insights")
+            
+            insights_col1, insights_col2 = st.columns(2)
+            
+            with insights_col1:
+                st.markdown("**🎯 Ranking Context:**")
+                if percentile >= 90:
+                    st.success(f"🌟 This {position} is among the absolute elite at the position")
+                elif percentile >= 75:
+                    st.success(f"⭐ This {position} is a top-tier option with excellent value")
+                elif percentile >= 50:
+                    st.info(f"📈 This {position} offers solid mid-tier production")
+                elif percentile >= 25:
+                    st.warning(f"⚠️ This {position} is a lower-tier option - consider other positions")
+                else:
+                    st.error(f"🚨 This {position} ranks very low at the position - high risk pick")
+            
+            with insights_col2:
+                st.markdown("**📊 VBD Comparison:**")
+                position_vbd_avg = position_data['VBD_Value'].mean()
+                vbd_diff = player_vbd - position_vbd_avg
+                
+                if vbd_diff > 5:
+                    st.success(f"💎 VBD is {vbd_diff:.1f} points above position average")
+                elif vbd_diff > 0:
+                    st.info(f"📈 VBD is {vbd_diff:.1f} points above position average")
+                elif vbd_diff > -5:
+                    st.warning(f"📉 VBD is {abs(vbd_diff):.1f} points below position average")
+                else:
+                    st.error(f"⚠️ VBD is {abs(vbd_diff):.1f} points below position average")
+                
+                st.markdown(f"Position Average VBD: **{position_vbd_avg:.1f}**")
 
 class DraftSimulator:
     """Fantasy draft simulator with AI logic and real-time features."""
