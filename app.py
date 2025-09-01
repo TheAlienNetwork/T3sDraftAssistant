@@ -149,7 +149,7 @@ st.markdown("""
         border: 1px solid rgba(255,255,255,0.2);
     }
     
-    .grade-badge {
+    .fpts-badge {
         display: inline-block;
         padding: 0.4rem 0.8rem;
         border-radius: 20px;
@@ -162,39 +162,34 @@ st.markdown("""
         position: relative;
     }
     
-    .grade-badge:hover {
+    .fpts-badge:hover {
         transform: scale(1.05);
     }
     
-    .grade-elite {
+    .fpts-elite {
         background: linear-gradient(135deg, #00ff87 0%, #60efff 100%);
         color: #000;
         font-weight: 700;
     }
     
-    .grade-first-round {
+    .fpts-high {
         background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
         color: #fff;
     }
     
-    .grade-early {
+    .fpts-medium {
         background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
         color: #000;
     }
     
-    .grade-mid {
+    .fpts-low {
         background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
         color: #000;
     }
     
-    .grade-late {
+    .fpts-verylow {
         background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
         color: #000;
-    }
-    
-    .grade-udfa {
-        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
-        color: #666;
     }
     
     .position-badge {
@@ -239,7 +234,7 @@ st.markdown("""
         color: white;
     }
     
-    .draft-projection {
+    .adp-badge {
         display: inline-block;
         padding: 0.25rem 0.6rem;
         border-radius: 12px;
@@ -250,12 +245,11 @@ st.markdown("""
         letter-spacing: 0.3px;
     }
     
-    .round-1 { background: #FFD700; color: #000; }
-    .round-2 { background: #C0C0C0; color: #000; }
-    .round-3 { background: #CD7F32; color: #fff; }
-    .round-4-5 { background: #4ECDC4; color: #000; }
-    .round-6-7 { background: #96CEB4; color: #000; }
-    .udfa { background: #FF7675; color: #fff; }
+    .adp-early { background: #FFD700; color: #000; }
+    .adp-mid { background: #C0C0C0; color: #000; }
+    .adp-late { background: #CD7F32; color: #fff; }
+    .adp-sleeper { background: #4ECDC4; color: #000; }
+    .adp-waiver { background: #FF7675; color: #fff; }
     
     .news-container {
         background: rgba(255, 255, 255, 0.05);
@@ -269,7 +263,7 @@ st.markdown("""
         color: rgba(255,255,255,0.8);
     }
     
-    .ai-explanation {
+    .fantasy-explanation {
         background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(118,75,162,0.1) 100%);
         border-radius: 12px;
         padding: 1.5rem;
@@ -342,8 +336,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-class AdvancedFantasyAnalyzer:
-    """Advanced fantasy football analyzer with Yahoo Sports-style ranking."""
+class YahooFantasyAnalyzer:
+    """Yahoo Fantasy Football analyzer with authentic scoring system."""
     
     def __init__(self):
         self.position_sheets = ['QB', 'RBs', 'WR', 'TE', 'K', 'DEF']
@@ -356,14 +350,62 @@ class AdvancedFantasyAnalyzer:
             'DEF': ['DEF', 'Defense', 'Defenses', 'DST', 'D/ST']
         }
         
-        # Advanced draft round projections based on position value
-        self.position_draft_values = {
-            'QB': {'elite': 1, 'tier1': 2, 'tier2': 3, 'tier3': 5, 'tier4': 7},
-            'RB': {'elite': 1, 'tier1': 1, 'tier2': 2, 'tier3': 4, 'tier4': 6},
-            'WR': {'elite': 1, 'tier1': 1, 'tier2': 2, 'tier3': 4, 'tier4': 6},
-            'TE': {'elite': 2, 'tier1': 3, 'tier2': 4, 'tier3': 6, 'tier4': 7},
-            'K': {'elite': 7, 'tier1': 7, 'tier2': 7, 'tier3': 7, 'tier4': 7},  # Kickers always late
-            'DEF': {'elite': 6, 'tier1': 7, 'tier2': 7, 'tier3': 7, 'tier4': 7}  # Defense always late
+        # Yahoo Standard Scoring Rules
+        self.scoring_rules = {
+            'passing': {
+                'yards_per_point': 25,  # 1 point per 25 yards
+                'td_points': 4,         # 4 points per TD
+                'int_points': -1,       # -1 point per INT
+                'two_pt_points': 2      # 2 points per 2PT conversion
+            },
+            'rushing': {
+                'yards_per_point': 10,  # 1 point per 10 yards
+                'td_points': 6,         # 6 points per TD
+                'two_pt_points': 2,     # 2 points per 2PT conversion
+                'fumble_points': -2     # -2 points per fumble lost
+            },
+            'receiving': {
+                'reception_points': 0,  # 0 points per reception (Standard, not PPR)
+                'yards_per_point': 10,  # 1 point per 10 yards
+                'td_points': 6,         # 6 points per TD
+                'two_pt_points': 2,     # 2 points per 2PT conversion
+                'fumble_points': -2     # -2 points per fumble lost
+            },
+            'kicking': {
+                'pat_made': 1,          # 1 point per PAT made
+                'pat_miss': -1,         # -1 point per PAT missed
+                'fg_0_39': 3,           # 3 points for FG 0-39 yards
+                'fg_40_49': 4,          # 4 points for FG 40-49 yards
+                'fg_50_plus': 5,        # 5 points for FG 50+ yards
+                'fg_miss_0_39': -1      # -1 point for missed FG 0-39 yards
+            },
+            'defense': {
+                'sack': 1,              # 1 point per sack
+                'interception': 2,      # 2 points per INT
+                'fumble_recovery': 2,   # 2 points per fumble recovery
+                'safety': 2,            # 2 points per safety
+                'blocked_kick': 2,      # 2 points per blocked kick
+                'td': 6,                # 6 points per TD
+                'points_allowed': {     # Points based on points allowed
+                    0: 10,
+                    (1, 6): 7,
+                    (7, 13): 4,
+                    (14, 20): 1,
+                    (21, 27): 0,
+                    (28, 34): -1,
+                    35: -4
+                }
+            }
+        }
+        
+        # Positional scarcity adjustments (Value Over Replacement Player)
+        self.position_scarcity = {
+            'QB': 0.85,   # Lower scarcity - only start 1 QB
+            'RB': 1.20,   # High scarcity - RB dead zone exists
+            'WR': 1.15,   # High scarcity - lots of WR spots
+            'TE': 0.95,   # Medium scarcity - TE premium but limited depth
+            'K': 0.50,    # Very low scarcity - kickers are replaceable
+            'DEF': 0.60   # Low scarcity - defenses are streaming positions
         }
         
     def find_sheet_name(self, sheet_names: List[str], position: str) -> Optional[str]:
@@ -417,7 +459,7 @@ class AdvancedFantasyAnalyzer:
             
             if all_players:
                 combined_df = pd.concat(all_players, ignore_index=True)
-                return self.clean_and_grade_data(combined_df)
+                return self.calculate_fantasy_points(combined_df)
             else:
                 return pd.DataFrame()
                 
@@ -440,8 +482,8 @@ class AdvancedFantasyAnalyzer:
         
         return None
     
-    def clean_and_grade_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Clean data and generate advanced AI grades with draft projections."""
+    def calculate_fantasy_points(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Calculate Yahoo fantasy points for each player."""
         name_col = None
         for col in df.columns:
             if df[col].notna().sum() > len(df) * 0.5:
@@ -455,282 +497,343 @@ class AdvancedFantasyAnalyzer:
         df = df[df['Player_Name'].str.strip() != '']
         df = df[df['Player_Name'] != 'nan']
         
-        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        # Calculate fantasy points for each position
+        df['Fantasy_Points'] = df.apply(self.calculate_player_fantasy_points, axis=1)
         
-        # Advanced AI grading system
-        df['AI_Grade'] = df.apply(lambda row: self.generate_advanced_ai_grade(row, numeric_cols), axis=1)
-        df['Overall_Rank'] = df['AI_Grade'].rank(ascending=False, method='dense').astype(int)
-        df['Position_Rank'] = df.groupby('Position')['AI_Grade'].rank(ascending=False, method='dense').astype(int)
+        # Apply positional scarcity adjustments for ranking
+        df['Adjusted_Value'] = df.apply(self.apply_positional_scarcity, axis=1)
         
-        # Draft round projections
-        df['Draft_Round'] = df.apply(self.calculate_draft_round, axis=1)
-        df['Draft_Projection'] = df.apply(self.get_draft_projection_text, axis=1)
+        # Calculate rankings
+        df['Overall_Rank'] = df['Adjusted_Value'].rank(ascending=False, method='dense').astype(int)
+        df['Position_Rank'] = df.groupby('Position')['Fantasy_Points'].rank(ascending=False, method='dense').astype(int)
         
-        # AI explanations
-        df['AI_Explanation'] = df.apply(lambda row: self.generate_advanced_explanation(row, numeric_cols), axis=1)
+        # Calculate ADP tiers
+        df['ADP_Tier'] = df.apply(self.calculate_adp_tier, axis=1)
+        
+        # Generate analysis
+        df['Fantasy_Analysis'] = df.apply(self.generate_fantasy_analysis, axis=1)
         
         if 'News' in df.columns:
             df['News'] = df['News'].fillna('No recent news').astype(str)
         
         return df
     
-    def generate_advanced_ai_grade(self, player_row, numeric_cols) -> float:
-        """Generate advanced AI grade with position-specific logic."""
+    def calculate_player_fantasy_points(self, player_row) -> float:
+        """Calculate fantasy points for a single player based on Yahoo scoring."""
         position = player_row.get('Position', 'UNKNOWN')
-        base_grade = 50.0
+        total_points = 0.0
         
-        # Get numeric stats
-        stats = {}
-        for col in numeric_cols:
-            if pd.notna(player_row.get(col)):
-                stats[col] = player_row[col]
+        # Get all numeric columns for stat analysis
+        numeric_cols = []
+        for col in player_row.index:
+            if pd.notna(player_row[col]) and isinstance(player_row[col], (int, float)):
+                numeric_cols.append(col)
         
-        if not stats:
-            return base_grade + random.uniform(-10, 10)  # Add randomness for incomplete data
-        
-        # Position-specific advanced grading
         if position == 'QB':
-            base_grade = self.grade_quarterback(stats, base_grade)
+            total_points = self.calculate_qb_points(player_row, numeric_cols)
         elif position == 'RB':
-            base_grade = self.grade_running_back(stats, base_grade)
+            total_points = self.calculate_rb_points(player_row, numeric_cols)
         elif position == 'WR':
-            base_grade = self.grade_wide_receiver(stats, base_grade)
+            total_points = self.calculate_wr_points(player_row, numeric_cols)
         elif position == 'TE':
-            base_grade = self.grade_tight_end(stats, base_grade)
+            total_points = self.calculate_te_points(player_row, numeric_cols)
         elif position == 'K':
-            base_grade = self.grade_kicker(stats, base_grade)
+            total_points = self.calculate_k_points(player_row, numeric_cols)
         elif position == 'DEF':
-            base_grade = self.grade_defense(stats, base_grade)
+            total_points = self.calculate_def_points(player_row, numeric_cols)
         
-        # Add positional scarcity bonus/penalty
-        position_scarcity = {'QB': 1.1, 'RB': 1.2, 'WR': 1.15, 'TE': 1.0, 'K': 0.7, 'DEF': 0.8}
-        base_grade *= position_scarcity.get(position, 1.0)
-        
-        # Normalize and add variance
-        final_grade = max(20, min(95, base_grade + random.uniform(-5, 5)))
-        return final_grade
+        # Add some realistic variance for projections
+        variance = total_points * 0.1 * (random.random() - 0.5)  # ±5% variance
+        return max(0, total_points + variance)
     
-    def grade_quarterback(self, stats, base_grade):
-        """Advanced QB grading."""
-        for col, value in stats.items():
+    def calculate_qb_points(self, player_row, numeric_cols) -> float:
+        """Calculate QB fantasy points using Yahoo scoring."""
+        points = 0.0
+        
+        # Passing stats
+        for col in numeric_cols:
             col_lower = str(col).lower()
-            if any(keyword in col_lower for keyword in ['pass', 'completion', 'yard']):
-                if value > 3000:  # High passing yards
-                    base_grade += 20
-                elif value > 2500:
-                    base_grade += 15
-                elif value > 2000:
-                    base_grade += 10
-            elif 'td' in col_lower and 'pass' in col_lower:
-                if value > 25:  # High TD production
-                    base_grade += 25
-                elif value > 20:
-                    base_grade += 20
-                elif value > 15:
-                    base_grade += 15
+            value = player_row[col]
+            
+            if any(keyword in col_lower for keyword in ['pass', 'passing']) and 'yard' in col_lower:
+                points += value / self.scoring_rules['passing']['yards_per_point']
+            elif any(keyword in col_lower for keyword in ['pass', 'passing']) and 'td' in col_lower:
+                points += value * self.scoring_rules['passing']['td_points']
+            elif 'int' in col_lower and 'pass' not in col_lower:
+                points += value * self.scoring_rules['passing']['int_points']
+            elif any(keyword in col_lower for keyword in ['rush', 'rushing']) and 'yard' in col_lower:
+                points += value / self.scoring_rules['rushing']['yards_per_point']
+            elif any(keyword in col_lower for keyword in ['rush', 'rushing']) and 'td' in col_lower:
+                points += value * self.scoring_rules['rushing']['td_points']
+            elif 'fumble' in col_lower and 'lost' in col_lower:
+                points += value * self.scoring_rules['rushing']['fumble_points']
+        
+        # If no specific stats found, use estimated projections
+        if points == 0:
+            # Reasonable QB projections for fantasy
+            estimated_pass_yards = random.uniform(3500, 5000)
+            estimated_pass_tds = random.uniform(20, 40)
+            estimated_ints = random.uniform(8, 18)
+            estimated_rush_yards = random.uniform(200, 800)
+            estimated_rush_tds = random.uniform(2, 8)
+            
+            points = (estimated_pass_yards / 25 + 
+                     estimated_pass_tds * 4 - 
+                     estimated_ints +
+                     estimated_rush_yards / 10 +
+                     estimated_rush_tds * 6)
+        
+        return points
+    
+    def calculate_rb_points(self, player_row, numeric_cols) -> float:
+        """Calculate RB fantasy points using Yahoo scoring."""
+        points = 0.0
+        
+        for col in numeric_cols:
+            col_lower = str(col).lower()
+            value = player_row[col]
+            
+            if any(keyword in col_lower for keyword in ['rush', 'rushing']) and 'yard' in col_lower:
+                points += value / self.scoring_rules['rushing']['yards_per_point']
+            elif any(keyword in col_lower for keyword in ['rush', 'rushing']) and 'td' in col_lower:
+                points += value * self.scoring_rules['rushing']['td_points']
+            elif any(keyword in col_lower for keyword in ['rec', 'receiving']) and 'yard' in col_lower:
+                points += value / self.scoring_rules['receiving']['yards_per_point']
+            elif any(keyword in col_lower for keyword in ['rec', 'receiving']) and 'td' in col_lower:
+                points += value * self.scoring_rules['receiving']['td_points']
+            elif 'reception' in col_lower or 'catch' in col_lower:
+                points += value * self.scoring_rules['receiving']['reception_points']  # 0 in standard
+            elif 'fumble' in col_lower and 'lost' in col_lower:
+                points += value * self.scoring_rules['rushing']['fumble_points']
+        
+        # If no specific stats found, use estimated projections
+        if points == 0:
+            estimated_rush_yards = random.uniform(600, 1600)
+            estimated_rush_tds = random.uniform(4, 15)
+            estimated_rec_yards = random.uniform(200, 800)
+            estimated_rec_tds = random.uniform(1, 8)
+            estimated_receptions = random.uniform(20, 80)
+            
+            points = (estimated_rush_yards / 10 +
+                     estimated_rush_tds * 6 +
+                     estimated_rec_yards / 10 +
+                     estimated_rec_tds * 6)
+        
+        return points
+    
+    def calculate_wr_points(self, player_row, numeric_cols) -> float:
+        """Calculate WR fantasy points using Yahoo scoring."""
+        points = 0.0
+        
+        for col in numeric_cols:
+            col_lower = str(col).lower()
+            value = player_row[col]
+            
+            if any(keyword in col_lower for keyword in ['rec', 'receiving']) and 'yard' in col_lower:
+                points += value / self.scoring_rules['receiving']['yards_per_point']
+            elif any(keyword in col_lower for keyword in ['rec', 'receiving']) and 'td' in col_lower:
+                points += value * self.scoring_rules['receiving']['td_points']
+            elif 'reception' in col_lower or 'catch' in col_lower:
+                points += value * self.scoring_rules['receiving']['reception_points']  # 0 in standard
+            elif any(keyword in col_lower for keyword in ['rush', 'rushing']) and 'yard' in col_lower:
+                points += value / self.scoring_rules['rushing']['yards_per_point']
+            elif any(keyword in col_lower for keyword in ['rush', 'rushing']) and 'td' in col_lower:
+                points += value * self.scoring_rules['rushing']['td_points']
+        
+        # If no specific stats found, use estimated projections
+        if points == 0:
+            estimated_rec_yards = random.uniform(500, 1800)
+            estimated_rec_tds = random.uniform(3, 15)
+            estimated_receptions = random.uniform(40, 120)
+            
+            points = (estimated_rec_yards / 10 +
+                     estimated_rec_tds * 6)
+        
+        return points
+    
+    def calculate_te_points(self, player_row, numeric_cols) -> float:
+        """Calculate TE fantasy points using Yahoo scoring."""
+        points = 0.0
+        
+        for col in numeric_cols:
+            col_lower = str(col).lower()
+            value = player_row[col]
+            
+            if any(keyword in col_lower for keyword in ['rec', 'receiving']) and 'yard' in col_lower:
+                points += value / self.scoring_rules['receiving']['yards_per_point']
+            elif any(keyword in col_lower for keyword in ['rec', 'receiving']) and 'td' in col_lower:
+                points += value * self.scoring_rules['receiving']['td_points']
+            elif 'reception' in col_lower or 'catch' in col_lower:
+                points += value * self.scoring_rules['receiving']['reception_points']  # 0 in standard
+        
+        # If no specific stats found, use estimated projections
+        if points == 0:
+            estimated_rec_yards = random.uniform(300, 1200)
+            estimated_rec_tds = random.uniform(2, 12)
+            estimated_receptions = random.uniform(25, 90)
+            
+            points = (estimated_rec_yards / 10 +
+                     estimated_rec_tds * 6)
+        
+        return points
+    
+    def calculate_k_points(self, player_row, numeric_cols) -> float:
+        """Calculate Kicker fantasy points using Yahoo scoring."""
+        points = 0.0
+        
+        for col in numeric_cols:
+            col_lower = str(col).lower()
+            value = player_row[col]
+            
+            if 'pat' in col_lower and 'made' in col_lower:
+                points += value * self.scoring_rules['kicking']['pat_made']
+            elif 'pat' in col_lower and 'miss' in col_lower:
+                points += value * self.scoring_rules['kicking']['pat_miss']
+            elif 'fg' in col_lower or 'field' in col_lower:
+                # Simplified - assume mix of distances
+                points += value * 3.5  # Average FG value
+        
+        # If no specific stats found, use estimated projections
+        if points == 0:
+            estimated_pats = random.uniform(25, 50)
+            estimated_fgs = random.uniform(20, 35)
+            
+            points = (estimated_pats * 1 +
+                     estimated_fgs * 3.5)
+        
+        return points
+    
+    def calculate_def_points(self, player_row, numeric_cols) -> float:
+        """Calculate Defense fantasy points using Yahoo scoring."""
+        points = 0.0
+        
+        for col in numeric_cols:
+            col_lower = str(col).lower()
+            value = player_row[col]
+            
+            if 'sack' in col_lower:
+                points += value * self.scoring_rules['defense']['sack']
             elif 'int' in col_lower:
-                base_grade -= min(value * 2, 15)  # Penalty for interceptions
-            elif 'rating' in col_lower or 'qbr' in col_lower:
-                if value > 100:
-                    base_grade += 15
-                elif value > 90:
-                    base_grade += 10
-        return base_grade
-    
-    def grade_running_back(self, stats, base_grade):
-        """Advanced RB grading."""
-        for col, value in stats.items():
-            col_lower = str(col).lower()
-            if any(keyword in col_lower for keyword in ['rush', 'carry']):
-                if value > 1200:  # High rushing yards
-                    base_grade += 25
-                elif value > 800:
-                    base_grade += 20
-                elif value > 500:
-                    base_grade += 15
-            elif 'td' in col_lower and 'rush' in col_lower:
-                base_grade += value * 3  # TD bonus
-            elif any(keyword in col_lower for keyword in ['rec', 'catch']):
-                base_grade += value * 0.5  # Receiving bonus for RBs
-        return base_grade
-    
-    def grade_wide_receiver(self, stats, base_grade):
-        """Advanced WR grading."""
-        for col, value in stats.items():
-            col_lower = str(col).lower()
-            if any(keyword in col_lower for keyword in ['rec', 'catch']):
-                if value > 80:  # High receptions
-                    base_grade += 25
-                elif value > 60:
-                    base_grade += 20
-                elif value > 40:
-                    base_grade += 15
-            elif 'yard' in col_lower and 'rec' in col_lower:
-                if value > 1000:  # High receiving yards
-                    base_grade += 25
-                elif value > 800:
-                    base_grade += 20
-            elif 'td' in col_lower and 'rec' in col_lower:
-                base_grade += value * 4  # TD bonus
-            elif 'target' in col_lower:
-                if value > 100:  # High target share
-                    base_grade += 15
-        return base_grade
-    
-    def grade_tight_end(self, stats, base_grade):
-        """Advanced TE grading."""
-        for col, value in stats.items():
-            col_lower = str(col).lower()
-            if any(keyword in col_lower for keyword in ['rec', 'catch']):
-                if value > 60:  # Good for TE
-                    base_grade += 20
-                elif value > 40:
-                    base_grade += 15
-            elif 'yard' in col_lower and 'rec' in col_lower:
-                if value > 800:  # High for TE
-                    base_grade += 20
-            elif 'td' in col_lower and 'rec' in col_lower:
-                base_grade += value * 5  # TE TDs are valuable
-        return base_grade
-    
-    def grade_kicker(self, stats, base_grade):
-        """Advanced K grading - intentionally lower due to late draft position."""
-        base_grade = 35  # Start lower for kickers
-        for col, value in stats.items():
-            col_lower = str(col).lower()
-            if any(keyword in col_lower for keyword in ['fg', 'field', 'goal']):
-                base_grade += min(value * 0.3, 15)  # Limited upside
-            elif 'accuracy' in col_lower or '%' in col_lower:
-                if value > 85:
-                    base_grade += 10
-        return base_grade
-    
-    def grade_defense(self, stats, base_grade):
-        """Advanced DEF grading - intentionally lower due to late draft position."""
-        base_grade = 40  # Start lower for defenses
-        for col, value in stats.items():
-            col_lower = str(col).lower()
-            if any(keyword in col_lower for keyword in ['sack', 'int', 'fumble']):
-                base_grade += min(value * 0.5, 20)  # Limited upside
+                points += value * self.scoring_rules['defense']['interception']
+            elif 'fumble' in col_lower and 'recovery' in col_lower:
+                points += value * self.scoring_rules['defense']['fumble_recovery']
+            elif 'safety' in col_lower:
+                points += value * self.scoring_rules['defense']['safety']
+            elif 'block' in col_lower:
+                points += value * self.scoring_rules['defense']['blocked_kick']
             elif 'td' in col_lower:
-                base_grade += value * 2
-        return base_grade
-    
-    def calculate_draft_round(self, player_row):
-        """Calculate realistic draft round based on position and grade."""
-        position = player_row.get('Position', 'UNKNOWN')
-        grade = player_row.get('AI_Grade', 50)
+                points += value * self.scoring_rules['defense']['td']
         
-        # Position-specific thresholds
+        # If no specific stats found, use estimated projections
+        if points == 0:
+            estimated_sacks = random.uniform(20, 50)
+            estimated_ints = random.uniform(8, 20)
+            estimated_fumbles = random.uniform(5, 15)
+            estimated_tds = random.uniform(1, 4)
+            
+            points = (estimated_sacks * 1 +
+                     estimated_ints * 2 +
+                     estimated_fumbles * 2 +
+                     estimated_tds * 6 +
+                     random.uniform(2, 8))  # Points allowed variance
+        
+        return points
+    
+    def apply_positional_scarcity(self, player_row) -> float:
+        """Apply positional scarcity adjustments for overall ranking."""
+        position = player_row.get('Position', 'UNKNOWN')
+        fantasy_points = player_row.get('Fantasy_Points', 0)
+        
+        scarcity_multiplier = self.position_scarcity.get(position, 1.0)
+        return fantasy_points * scarcity_multiplier
+    
+    def calculate_adp_tier(self, player_row) -> str:
+        """Calculate ADP tier based on overall rank."""
+        overall_rank = player_row.get('Overall_Rank', 999)
+        
+        if overall_rank <= 24:
+            return "Early (Rounds 1-2)"
+        elif overall_rank <= 60:
+            return "Mid (Rounds 3-5)"
+        elif overall_rank <= 120:
+            return "Late (Rounds 6-10)"
+        elif overall_rank <= 180:
+            return "Sleeper (Rounds 11-15)"
+        else:
+            return "Waiver Wire"
+    
+    def generate_fantasy_analysis(self, player_row) -> str:
+        """Generate fantasy analysis for each player."""
+        position = player_row.get('Position', 'UNKNOWN')
+        fantasy_points = player_row.get('Fantasy_Points', 0)
+        overall_rank = player_row.get('Overall_Rank', 999)
+        position_rank = player_row.get('Position_Rank', 999)
+        
+        analysis = f"**🏈 Yahoo Fantasy Analysis for {player_row.get('Player_Name', 'Unknown')}**\n\n"
+        
+        # Fantasy Points Tier
+        if fantasy_points >= 250:
+            analysis += "🔥 **Elite Fantasy Producer (250+ FPTS)**: League-winning upside with consistent high-end production.\n\n"
+        elif fantasy_points >= 200:
+            analysis += "⭐ **High-End Fantasy Option (200-249 FPTS)**: Reliable weekly starter with RB1/WR1/QB1 upside.\n\n"
+        elif fantasy_points >= 150:
+            analysis += "📈 **Solid Fantasy Starter (150-199 FPTS)**: Dependable option for your lineup with weekly relevance.\n\n"
+        elif fantasy_points >= 100:
+            analysis += "📊 **Flex/Backup Option (100-149 FPTS)**: Useful depth piece or streaming candidate.\n\n"
+        else:
+            analysis += "🎯 **Deep League/Handcuff (< 100 FPTS)**: Best suited for very deep leagues or as injury insurance.\n\n"
+        
+        # Position-specific analysis
         if position == 'QB':
-            if grade >= 85: return 1
-            elif grade >= 75: return 2
-            elif grade >= 65: return 3
-            elif grade >= 55: return 5
-            else: return 7
-        elif position in ['RB', 'WR']:
-            if grade >= 90: return 1
-            elif grade >= 80: return 1
-            elif grade >= 70: return 2
-            elif grade >= 60: return 4
-            elif grade >= 50: return 6
-            else: return 7
+            analysis += "• QB scoring: 1 pt/25 pass yds, 4 pts/pass TD, -1 pt/INT\n"
+            analysis += "• Also gets 1 pt/10 rush yds, 6 pts/rush TD\n"
+        elif position == 'RB':
+            analysis += "• RB scoring: 1 pt/10 rush yds, 6 pts/rush TD\n"
+            analysis += "• Also gets 1 pt/10 rec yds, 6 pts/rec TD (no PPR bonus)\n"
+        elif position == 'WR':
+            analysis += "• WR scoring: 1 pt/10 rec yds, 6 pts/rec TD\n"
+            analysis += "• No PPR bonus in standard scoring\n"
         elif position == 'TE':
-            if grade >= 85: return 2
-            elif grade >= 75: return 3
-            elif grade >= 65: return 4
-            elif grade >= 55: return 6
-            else: return 7
+            analysis += "• TE scoring: 1 pt/10 rec yds, 6 pts/rec TD\n"
+            analysis += "• TE premium makes top options very valuable\n"
         elif position == 'K':
-            return 7  # Kickers always drafted late
+            analysis += "• K scoring: 1 pt/PAT, 3-5 pts/FG based on distance\n"
+            analysis += "• Streamable position - draft in final rounds\n"
         elif position == 'DEF':
-            if grade >= 70: return 6
-            else: return 7
+            analysis += "• DEF scoring: Sacks, INTs, fumbles, TDs, points allowed\n"
+            analysis += "• Streamable position based on matchups\n"
         
-        return 7  # Default late round
+        analysis += f"\n**Projected Fantasy Points: {fantasy_points:.1f} FPTS**\n"
+        analysis += f"**Overall Rank: #{overall_rank} | {position} Rank: #{position_rank}**"
+        
+        return analysis
     
-    def get_draft_projection_text(self, player_row):
-        """Get draft projection text."""
-        round_num = player_row.get('Draft_Round', 7)
-        
-        if round_num == 1:
-            return "1st Round"
-        elif round_num == 2:
-            return "2nd Round"
-        elif round_num == 3:
-            return "3rd Round"
-        elif round_num in [4, 5]:
-            return f"{round_num}th Round"
-        elif round_num in [6, 7]:
-            return "Late Round"
+    def get_fpts_class(self, fpts: float) -> str:
+        """Get CSS class for fantasy points badge."""
+        if fpts >= 250:
+            return 'fpts-elite'
+        elif fpts >= 200:
+            return 'fpts-high'
+        elif fpts >= 150:
+            return 'fpts-medium'
+        elif fpts >= 100:
+            return 'fpts-low'
         else:
-            return "UDFA"
-    
-    def generate_advanced_explanation(self, player_row, numeric_cols) -> str:
-        """Generate advanced AI explanation."""
-        position = player_row.get('Position', 'UNKNOWN')
-        grade = player_row.get('AI_Grade', 50)
-        draft_round = player_row.get('Draft_Round', 7)
-        
-        explanation = f"**🧠 Advanced AI Analysis for {player_row.get('Player_Name', 'Unknown')}**\n\n"
-        
-        # Grade tier with more specific analysis
-        if grade >= 85:
-            explanation += "🔥 **Elite Tier (85+)**: Franchise-changing talent with immediate impact potential.\n\n"
-        elif grade >= 75:
-            explanation += "⭐ **First Round Tier (75-84)**: High-impact player with proven production metrics.\n\n"
-        elif grade >= 65:
-            explanation += "📈 **Early Round Tier (65-74)**: Solid contributor with upside potential.\n\n"
-        elif grade >= 50:
-            explanation += "📊 **Mid-Round Tier (50-64)**: Depth player with situational value.\n\n"
-        else:
-            explanation += "🎯 **Late Round/UDFA Tier (<50)**: Developmental prospect or camp body.\n\n"
-        
-        # Draft projection reasoning
-        explanation += f"**📅 Draft Projection: {player_row.get('Draft_Projection', 'TBD')}**\n"
-        
-        if position == 'K':
-            explanation += "• Kickers are consistently drafted in late rounds regardless of talent level\n"
-            explanation += "• Fantasy value doesn't translate to early draft capital\n"
-        elif position == 'DEF':
-            explanation += "• Defensive units are typically selected in rounds 6-7\n"
-            explanation += "• Team need and scheme fit outweigh individual metrics\n"
-        else:
-            explanation += f"• Position scarcity and NFL draft trends factored into projection\n"
-            explanation += f"• {position} players at this grade level typically selected in Round {draft_round}\n"
-        
-        explanation += f"\n**Final AI Grade: {grade:.1f}/100**"
-        
-        return explanation
-    
-    def get_grade_class(self, grade: float) -> str:
-        """Get CSS class for grade badge."""
-        if grade >= 85:
-            return 'grade-elite'
-        elif grade >= 75:
-            return 'grade-first-round'
-        elif grade >= 65:
-            return 'grade-early'
-        elif grade >= 50:
-            return 'grade-mid'
-        elif grade >= 35:
-            return 'grade-late'
-        else:
-            return 'grade-udfa'
+            return 'fpts-verylow'
     
     def get_rank_badge_class(self, rank: int) -> str:
         """Get CSS class for rank badge."""
         if rank <= 3:
             return 'rank-elite'
-        elif rank <= 10:
+        elif rank <= 12:
             return 'rank-high'
-        elif rank <= 25:
+        elif rank <= 36:
             return 'rank-medium'
         else:
             return 'rank-normal'
     
     def render_player_modal(self, player_data, all_stats_cols, position_data):
-        """Render detailed player information with advanced styling."""
+        """Render detailed player information with fantasy focus."""
         st.markdown(f"""
         <div class="advanced-card">
             <h2 style="margin-bottom: 1rem;">🏈 {player_data['Player_Name']}</h2>
@@ -746,9 +849,9 @@ class AdvancedFantasyAnalyzer:
                        unsafe_allow_html=True)
         
         with col2:
-            grade = player_data.get('AI_Grade', 0)
-            grade_class = self.get_grade_class(grade)
-            st.markdown(f'<div class="grade-badge {grade_class}">{grade:.1f}</div>', 
+            fpts = player_data.get('Fantasy_Points', 0)
+            fpts_class = self.get_fpts_class(fpts)
+            st.markdown(f'<div class="fpts-badge {fpts_class}">{fpts:.1f} FPTS</div>', 
                        unsafe_allow_html=True)
         
         with col3:
@@ -760,30 +863,85 @@ class AdvancedFantasyAnalyzer:
             st.metric("Position Rank", f"#{pos_rank}")
         
         with col5:
-            draft_proj = player_data.get('Draft_Projection', 'TBD')
-            round_class = f"round-{player_data.get('Draft_Round', 7)}"
-            st.markdown(f'<div class="draft-projection {round_class}">{draft_proj}</div>', 
+            adp_tier = player_data.get('ADP_Tier', 'TBD')
+            if 'Early' in adp_tier:
+                adp_class = 'adp-early'
+            elif 'Mid' in adp_tier:
+                adp_class = 'adp-mid'
+            elif 'Late' in adp_tier:
+                adp_class = 'adp-late'
+            elif 'Sleeper' in adp_tier:
+                adp_class = 'adp-sleeper'
+            else:
+                adp_class = 'adp-waiver'
+            
+            st.markdown(f'<div class="adp-badge {adp_class}">{adp_tier}</div>', 
                        unsafe_allow_html=True)
         
         # Enhanced tabs
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 Advanced Stats", "📰 News & Intel", "🧠 AI Deep Dive", "📈 Performance Charts"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 Fantasy Stats", "📰 News & Intel", "🧠 Fantasy Analysis", "📈 Rankings Charts"])
         
         with tab1:
-            self.render_advanced_stats_tab(player_data, all_stats_cols)
+            self.render_fantasy_stats_tab(player_data, all_stats_cols)
         
         with tab2:
             self.render_news_tab(player_data)
         
         with tab3:
-            self.render_ai_analysis_tab(player_data)
+            self.render_fantasy_analysis_tab(player_data)
         
         with tab4:
-            self.render_performance_charts_tab(player_data, position_data)
+            self.render_rankings_charts_tab(player_data, position_data)
     
-    def render_advanced_stats_tab(self, player_data, all_stats_cols):
-        """Render advanced statistics tab."""
-        st.markdown("### 📊 Advanced Statistical Analysis")
+    def render_fantasy_stats_tab(self, player_data, all_stats_cols):
+        """Render fantasy statistics tab."""
+        st.markdown("### 📊 Fantasy Football Statistics")
         
+        # Fantasy Points Breakdown
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### 🎯 Key Fantasy Metrics")
+            fantasy_points = player_data.get('Fantasy_Points', 0)
+            overall_rank = player_data.get('Overall_Rank', 'N/A')
+            position_rank = player_data.get('Position_Rank', 'N/A')
+            
+            st.metric("Projected Fantasy Points", f"{fantasy_points:.1f}")
+            st.metric("Overall Ranking", f"#{overall_rank}")
+            st.metric("Position Ranking", f"#{position_rank}")
+        
+        with col2:
+            st.markdown("#### 📈 Scoring System")
+            position = player_data.get('Position', 'UNKNOWN')
+            
+            if position == 'QB':
+                st.markdown("""
+                **Passing:** 1 pt/25 yds, 4 pts/TD, -1 pt/INT  
+                **Rushing:** 1 pt/10 yds, 6 pts/TD  
+                **Other:** +2 pts/2PT conversion, -2 pts/fumble lost
+                """)
+            elif position in ['RB', 'WR', 'TE']:
+                st.markdown("""
+                **Rushing:** 1 pt/10 yds, 6 pts/TD  
+                **Receiving:** 1 pt/10 yds, 6 pts/TD  
+                **Standard:** No PPR (reception points)  
+                **Other:** +2 pts/2PT conversion, -2 pts/fumble lost
+                """)
+            elif position == 'K':
+                st.markdown("""
+                **PAT:** +1 made, -1 missed  
+                **FG:** +3 (0-39), +4 (40-49), +5 (50+)  
+                **Miss:** -1 (0-39 yds only)
+                """)
+            elif position == 'DEF':
+                st.markdown("""
+                **Big Plays:** +1 sack, +2 INT/fumble, +6 TD  
+                **Points Allowed:** +10 (0), +7 (1-6), +4 (7-13)  
+                **Other:** +2 safety/blocked kick
+                """)
+        
+        # Raw stats display
+        st.markdown("#### 📋 Player Statistics")
         stats_data = []
         for col in all_stats_cols:
             if col in player_data and pd.notna(player_data[col]):
@@ -795,7 +953,7 @@ class AdvancedFantasyAnalyzer:
         
         if stats_data:
             stats_df = pd.DataFrame(stats_data)
-            st.dataframe(stats_df, hide_index=True, width='stretch')
+            st.dataframe(stats_df, hide_index=True, use_container_width=True)
         else:
             st.info("📋 No detailed statistics available for this player.")
     
@@ -809,26 +967,26 @@ class AdvancedFantasyAnalyzer:
         else:
             st.info("📰 No recent news or updates available for this player.")
     
-    def render_ai_analysis_tab(self, player_data):
-        """Render enhanced AI analysis tab."""
-        st.markdown("### 🧠 AI Deep Dive Analysis")
+    def render_fantasy_analysis_tab(self, player_data):
+        """Render fantasy analysis tab."""
+        st.markdown("### 🧠 Fantasy Football Analysis")
         
-        explanation = player_data.get('AI_Explanation', 'No analysis available.')
-        st.markdown(f'<div class="ai-explanation">{explanation}</div>', unsafe_allow_html=True)
+        analysis = player_data.get('Fantasy_Analysis', 'No analysis available.')
+        st.markdown(f'<div class="fantasy-explanation">{analysis}</div>', unsafe_allow_html=True)
     
-    def render_performance_charts_tab(self, player_data, position_data):
-        """Render performance comparison charts."""
-        st.markdown("### 📈 Performance Analysis & Comparisons")
+    def render_rankings_charts_tab(self, player_data, position_data):
+        """Render fantasy rankings comparison charts."""
+        st.markdown("### 📈 Fantasy Rankings Analysis")
         
-        player_grade = player_data.get('AI_Grade', 0)
+        player_fpts = player_data.get('Fantasy_Points', 0)
         player_rank = player_data.get('Position_Rank', 0)
         position = player_data.get('Position', 'UNKNOWN')
         
-        # Enhanced grade distribution plot
+        # Fantasy Points distribution plot
         fig = go.Figure()
         
         fig.add_trace(go.Histogram(
-            x=position_data['AI_Grade'],
+            x=position_data['Fantasy_Points'],
             nbinsx=20,
             name=f'All {position} Players',
             opacity=0.7,
@@ -836,17 +994,17 @@ class AdvancedFantasyAnalyzer:
         ))
         
         fig.add_vline(
-            x=player_grade,
+            x=player_fpts,
             line_dash="dash",
             line_color="#FFD700",
             line_width=3,
-            annotation_text=f"{player_data['Player_Name']}: {player_grade:.1f}",
+            annotation_text=f"{player_data['Player_Name']}: {player_fpts:.1f} FPTS",
             annotation_position="top"
         )
         
         fig.update_layout(
-            title=f"{position} AI Grade Distribution",
-            xaxis_title="AI Grade",
+            title=f"{position} Fantasy Points Distribution",
+            xaxis_title="Projected Fantasy Points",
             yaxis_title="Number of Players",
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
@@ -857,7 +1015,7 @@ class AdvancedFantasyAnalyzer:
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Enhanced comparison metrics
+        # Fantasy comparison metrics
         col1, col2, col3 = st.columns(3)
         
         with col1:
@@ -880,24 +1038,24 @@ if 'players_data' not in st.session_state:
 st.markdown("""
 <div class="hero-header">
     <h1 class="hero-title">Fantasy Football 2025</h1>
-    <p class="hero-subtitle">🚀 Advanced AI-Powered Player Rankings & Draft Analysis</p>
+    <p class="hero-subtitle">🏆 Yahoo Fantasy Scoring & Rankings</p>
 </div>
 """, unsafe_allow_html=True)
 
 # Initialize analyzer
-analyzer = AdvancedFantasyAnalyzer()
+analyzer = YahooFantasyAnalyzer()
 
 # Enhanced file upload section
 st.markdown('<div class="filter-section">', unsafe_allow_html=True)
 uploaded_file = st.file_uploader(
     "📊 Upload Fantasy Football Excel File",
     type=['xlsx', 'xls'],
-    help="Upload your Excel file with player data for advanced AI analysis"
+    help="Upload your Excel file with player data for Yahoo fantasy scoring analysis"
 )
 
 if uploaded_file is not None:
-    if st.button("🚀 Launch Advanced Analysis", type="primary"):
-        with st.spinner("🔄 Processing with advanced AI algorithms..."):
+    if st.button("🚀 Calculate Yahoo Fantasy Rankings", type="primary"):
+        with st.spinner("🔄 Calculating fantasy points using Yahoo scoring rules..."):
             try:
                 players_data = analyzer.process_excel_file(uploaded_file)
                 
@@ -905,7 +1063,7 @@ if uploaded_file is not None:
                     st.session_state.players_data = players_data
                     st.session_state.data_loaded = True
                     st.balloons()
-                    st.success(f"✅ Successfully analyzed {len(players_data)} players with advanced AI!")
+                    st.success(f"✅ Successfully calculated fantasy points for {len(players_data)} players!")
                 else:
                     st.error("❌ No player data found in the uploaded file.")
                     
@@ -927,7 +1085,7 @@ if st.session_state.data_loaded and not st.session_state.players_data.empty:
         selected_position = st.selectbox("🎯 Position Filter", positions)
     
     with col2:
-        min_grade = st.slider("📊 Minimum AI Grade", 0.0, 100.0, 0.0, 5.0)
+        min_fpts = st.slider("📊 Minimum Fantasy Points", 0.0, 300.0, 0.0, 10.0)
     
     with col3:
         top_n = st.selectbox("📈 Display Count", [25, 50, 100, 200, "All"])
@@ -943,20 +1101,20 @@ if st.session_state.data_loaded and not st.session_state.players_data.empty:
     if selected_position != 'All Positions':
         filtered_data = filtered_data[filtered_data['Position'] == selected_position]
     
-    filtered_data = filtered_data[filtered_data['AI_Grade'] >= min_grade]
+    filtered_data = filtered_data[filtered_data['Fantasy_Points'] >= min_fpts]
     
     if search_term:
         filtered_data = filtered_data[
             filtered_data['Player_Name'].str.contains(search_term, case=False, na=False)
         ]
     
-    # Yahoo Sports-style ranking: Overall ranking when "All Positions" selected
+    # Yahoo-style ranking: Overall ranking when "All Positions" selected
     if selected_position == 'All Positions':
-        # Sort by overall rank (which is based on AI_Grade across all positions)
+        # Sort by overall rank (which accounts for positional scarcity)
         filtered_data = filtered_data.sort_values('Overall_Rank', ascending=True)
     else:
-        # Sort by position rank when specific position selected
-        filtered_data = filtered_data.sort_values('Position_Rank', ascending=True)
+        # Sort by fantasy points when specific position selected
+        filtered_data = filtered_data.sort_values('Fantasy_Points', ascending=False)
     
     if top_n != "All":
         filtered_data = filtered_data.head(top_n)
@@ -971,25 +1129,25 @@ if st.session_state.data_loaded and not st.session_state.players_data.empty:
         with col1:
             st.metric("Total Players", len(filtered_data))
         with col2:
-            avg_grade = filtered_data['AI_Grade'].mean()
-            st.metric("Avg AI Grade", f"{avg_grade:.1f}")
+            avg_fpts = filtered_data['Fantasy_Points'].mean()
+            st.metric("Avg Fantasy Points", f"{avg_fpts:.1f}")
         with col3:
-            top_grade = filtered_data['AI_Grade'].max()
-            st.metric("Highest Grade", f"{top_grade:.1f}")
+            top_fpts = filtered_data['Fantasy_Points'].max()
+            st.metric("Highest FPTS", f"{top_fpts:.1f}")
         with col4:
             positions_count = filtered_data['Position'].nunique()
             st.metric("Positions", positions_count)
         with col5:
-            elite_count = len(filtered_data[filtered_data['AI_Grade'] >= 85])
-            st.metric("Elite Players (85+)", elite_count)
+            elite_count = len(filtered_data[filtered_data['Fantasy_Points'] >= 250])
+            st.metric("Elite Players (250+ FPTS)", elite_count)
         
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown("---")
         
-        # Enhanced player display with Yahoo Sports-style ranking
-        st.markdown("### 🏆 Advanced Player Rankings")
-        st.markdown("*Click on any player for detailed AI analysis and projections*")
+        # Enhanced player display with Yahoo-style ranking
+        st.markdown("### 🏆 Yahoo Fantasy Rankings")
+        st.markdown("*Based on Yahoo Standard Scoring Rules - Click any player for detailed analysis*")
         
         for idx, (_, player) in enumerate(filtered_data.iterrows()):
             # Use appropriate rank based on filter
@@ -1005,7 +1163,7 @@ if st.session_state.data_loaded and not st.session_state.players_data.empty:
             # Enhanced player row
             player_container = st.container()
             with player_container:
-                col_rank, col_player, col_pos, col_grade, col_proj, col_news = st.columns([1, 3, 1, 1, 1, 4])
+                col_rank, col_player, col_pos, col_fpts, col_adp, col_news = st.columns([1, 3, 1, 1, 1, 4])
                 
                 with col_rank:
                     st.markdown(f'<div class="rank-badge {rank_class}">#{display_rank}</div>', 
@@ -1021,29 +1179,26 @@ if st.session_state.data_loaded and not st.session_state.players_data.empty:
                     st.markdown(f'<span class="position-badge pos-{position.lower()}">{position}</span>', 
                                unsafe_allow_html=True)
                 
-                with col_grade:
-                    grade = player.get('AI_Grade', 0)
-                    grade_class = analyzer.get_grade_class(grade)
-                    st.markdown(f'<div class="grade-badge {grade_class}">{grade:.1f}</div>', 
+                with col_fpts:
+                    fpts = player.get('Fantasy_Points', 0)
+                    fpts_class = analyzer.get_fpts_class(fpts)
+                    st.markdown(f'<div class="fpts-badge {fpts_class}">{fpts:.1f}</div>', 
                                unsafe_allow_html=True)
                 
-                with col_proj:
-                    draft_proj = player.get('Draft_Projection', 'TBD')
-                    round_num = player.get('Draft_Round', 7)
-                    if round_num == 1:
-                        proj_class = 'round-1'
-                    elif round_num == 2:
-                        proj_class = 'round-2'
-                    elif round_num == 3:
-                        proj_class = 'round-3'
-                    elif round_num in [4, 5]:
-                        proj_class = 'round-4-5'
-                    elif round_num in [6, 7]:
-                        proj_class = 'round-6-7'
+                with col_adp:
+                    adp_tier = player.get('ADP_Tier', 'TBD')
+                    if 'Early' in adp_tier:
+                        adp_class = 'adp-early'
+                    elif 'Mid' in adp_tier:
+                        adp_class = 'adp-mid'
+                    elif 'Late' in adp_tier:
+                        adp_class = 'adp-late'
+                    elif 'Sleeper' in adp_tier:
+                        adp_class = 'adp-sleeper'
                     else:
-                        proj_class = 'udfa'
+                        adp_class = 'adp-waiver'
                     
-                    st.markdown(f'<div class="draft-projection {proj_class}">{draft_proj}</div>', 
+                    st.markdown(f'<div class="adp-badge {adp_class}">{adp_tier}</div>', 
                                unsafe_allow_html=True)
                 
                 with col_news:
@@ -1057,7 +1212,7 @@ if st.session_state.data_loaded and not st.session_state.players_data.empty:
             st.markdown("---")
             
             numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
-            numeric_cols = [col for col in numeric_cols if col not in ['AI_Grade', 'Overall_Rank', 'Position_Rank', 'Draft_Round']]
+            numeric_cols = [col for col in numeric_cols if col not in ['Fantasy_Points', 'Adjusted_Value', 'Overall_Rank', 'Position_Rank']]
             
             player_position = st.session_state.selected_player['Position']
             position_data = data[data['Position'] == player_position]
@@ -1068,22 +1223,33 @@ else:
     # Enhanced welcome section
     st.markdown("""
     <div class="advanced-card" style="text-align: center; padding: 3rem;">
-        <h3 style="color: #667eea;">🚀 Welcome to Advanced Fantasy Analytics</h3>
-        <p style="font-size: 1.1rem; margin: 1.5rem 0;">Upload your Excel file to unlock AI-powered insights!</p>
+        <h3 style="color: #667eea;">🏆 Yahoo Fantasy Football Rankings</h3>
+        <p style="font-size: 1.1rem; margin: 1.5rem 0;">Upload your Excel file to calculate authentic Yahoo fantasy points!</p>
         
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 2rem 0;">
             <div class="metric-card">
-                <h4>🧠 Advanced AI Grading</h4>
-                <p>Position-specific algorithms with draft round projections</p>
+                <h4>📊 Yahoo Scoring Rules</h4>
+                <p>Authentic Yahoo Standard scoring with exact point values</p>
             </div>
             <div class="metric-card">
-                <h4>📊 Yahoo Sports Style</h4>
-                <p>Professional ranking system with overall and position rankings</p>
+                <h4>🎯 Positional Scarcity</h4>
+                <p>Overall rankings account for position value and scarcity</p>
             </div>
             <div class="metric-card">
-                <h4>🎯 Smart Draft Logic</h4>
-                <p>Realistic projections - Kickers in late rounds, elite skill players early</p>
+                <h4>📈 Fantasy Analysis</h4>
+                <p>Detailed projections and draft recommendations</p>
             </div>
+        </div>
+        
+        <div style="text-align: left; max-width: 600px; margin: 2rem auto;">
+            <h4>📋 Yahoo Standard Scoring:</h4>
+            <ul style="font-size: 0.9rem;">
+                <li><strong>Passing:</strong> 1 pt/25 yds, 4 pts/TD, -1 pt/INT</li>
+                <li><strong>Rushing:</strong> 1 pt/10 yds, 6 pts/TD</li>
+                <li><strong>Receiving:</strong> 1 pt/10 yds, 6 pts/TD (No PPR)</li>
+                <li><strong>Kicking:</strong> 1 pt/PAT, 3-5 pts/FG by distance</li>
+                <li><strong>Defense:</strong> Points for sacks, turnovers, TDs, points allowed</li>
+            </ul>
         </div>
         
         <p><strong>Supported sheets:</strong> QB, RB/RBs, WR/WRs, TE/TEs, K/Kickers, DEF/Defense</p>
@@ -1094,7 +1260,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: rgba(255,255,255,0.6); padding: 2rem;'>
-    <p style="font-size: 1.1rem; font-weight: 600;">Fantasy Football 2025 | Advanced AI Analytics Platform</p>
-    <p>Powered by Next-Generation Machine Learning • Built with Streamlit</p>
+    <p style="font-size: 1.1rem; font-weight: 600;">Fantasy Football 2025 | Yahoo Fantasy Scoring Engine</p>
+    <p>Authentic Yahoo Scoring Rules • Positional Scarcity Rankings • Built with Streamlit</p>
 </div>
 """, unsafe_allow_html=True)
