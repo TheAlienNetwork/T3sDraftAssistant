@@ -1311,114 +1311,184 @@ class DraftSimulator:
             return 'BENCH'
     
     def ai_draft_pick(self, team_index: int, available_players: pd.DataFrame, pick_num: int = None) -> dict:
-        """AI logic for drafting players."""
+        """Enhanced AI logic with realistic team personalities and advanced strategy."""
         # Ensure team_index is within valid range for AI teams (0-8)
         if team_index < 0 or team_index >= 9:
             team_index = 0
         
         team_roster = self.ai_teams[team_index]
+        current_round = ((st.session_state.current_pick_number - 1) // 10) + 1
         
-        # Count positions on roster
+        # Enhanced AI team personalities with distinct strategies
+        ai_strategies = {
+            0: 'zero_rb',        # Zero RB strategy - WRs early, RBs late
+            1: 'rb_heavy',       # RB focused - secures RB early and often
+            2: 'value_based',    # Strict VBD following
+            3: 'balanced',       # Traditional balanced approach
+            4: 'late_round_qb',  # Waits on QB, builds skill positions
+            5: 'te_premium',     # Values TE highly, drafts early
+            6: 'upside_hunter',  # Targets high-ceiling, low-floor players
+            7: 'safe_floor',     # Conservative, high-floor players
+            8: 'contrarian'      # Goes against consensus, makes surprising picks
+        }
+        
+        strategy = ai_strategies.get(team_index, 'balanced')
+        
+        # Count current positions
         position_counts = {}
         for player in team_roster:
             pos = player.get('Position', 'UNKNOWN')
             position_counts[pos] = position_counts.get(pos, 0) + 1
-
-        # Get the current roster slot being filled
-        team_picks = len(team_roster)
-        current_round = team_picks + 1
         
-        if current_round <= len(self.position_draft_order):
-            target_slot = self.position_draft_order[current_round - 1]
-        else:
-            target_slot = 'BENCH'
+        # Strategy-based candidate filtering
+        candidates = self.get_candidates_by_strategy(
+            available_players, strategy, position_counts, current_round, len(team_roster)
+        )
+        
+        if len(candidates) == 0:
+            candidates = available_players.head(8)  # Fallback
+        
+        # Strategy-based selection with realistic variance
+        selected_player = self.select_by_strategy(candidates, strategy, current_round)
+        
+        return selected_player.to_dict() if selected_player is not None else None
 
-        # AI draft strategy based on roster slot and team construction
-        if target_slot == 'QB':
-            # Round 1: Must draft QB
-            candidates = available_players[available_players['Position'] == 'QB']
-            if len(candidates) == 0:
-                candidates = available_players  # Fallback
-                
-        elif target_slot == 'WR':
-            # Rounds 2-3: Draft WRs
-            candidates = available_players[available_players['Position'] == 'WR']
-            if len(candidates) == 0:
-                candidates = available_players[available_players['Position'].isin(['WR', 'RB', 'TE'])]
-                
-        elif target_slot == 'RB':
-            # Rounds 4-5: Draft RBs
-            candidates = available_players[available_players['Position'] == 'RB']
-            if len(candidates) == 0:
-                candidates = available_players[available_players['Position'].isin(['RB', 'WR', 'TE'])]
-                
-        elif target_slot == 'TE':
-            # Round 6: Draft TE
-            candidates = available_players[available_players['Position'] == 'TE']
-            if len(candidates) == 0:
-                candidates = available_players[available_players['Position'].isin(['TE', 'WR', 'RB'])]
-                
-        elif target_slot == 'FLEX':
-            # Round 7: FLEX position (WR/RB/TE)
-            flex_positions = ['WR', 'RB', 'TE']
-            candidates = available_players[available_players['Position'].isin(flex_positions)]
-            
-            # AI strategy for FLEX: prefer position with lowest current total on roster
-            flex_values = {}
-            for pos in flex_positions:
-                pos_total = sum(p.get('VBD_Value', 0) for p in team_roster if p.get('Position') == pos)
-                flex_values[pos] = pos_total
-            
-            # Prefer position with lowest current value (needs strengthening)
-            weakest_flex_pos = min(flex_values.items(), key=lambda x: x[1])[0]
-            preferred_candidates = candidates[candidates['Position'] == weakest_flex_pos]
-            
-            if len(preferred_candidates) > 0:
-                candidates = preferred_candidates
-                
-        elif target_slot == 'K':
-            # Round 8: Draft Kicker
-            candidates = available_players[available_players['Position'] == 'K']
-            if len(candidates) == 0:
-                candidates = available_players  # Fallback
-                
-        elif target_slot == 'DEF':
-            # Round 9: Draft Defense
-            candidates = available_players[available_players['Position'] == 'DEF']
-            if len(candidates) == 0:
-                candidates = available_players  # Fallback
-                
-        else:  # BENCH rounds (10-12)
-            # Bench strategy: Best available or fill weaknesses
-            # Calculate position strength
-            position_strength = {}
-            for pos in ['QB', 'RB', 'WR', 'TE']:
-                pos_players = [p for p in team_roster if p.get('Position') == pos]
-                avg_vbd = sum(p.get('VBD_Value', 0) for p in pos_players) / max(len(pos_players), 1)
-                position_strength[pos] = avg_vbd
-            
-            # Target weakest position for bench depth
-            if position_strength:
-                weakest_pos = min(position_strength.items(), key=lambda x: x[1])[0]
-                candidates = available_players[available_players['Position'] == weakest_pos]
-                
-                # If no players available in weakest position, go best available
-                if len(candidates) == 0:
-                    candidates = available_players[available_players['Position'].isin(['RB', 'WR', 'TE', 'QB'])]
+    def get_candidates_by_strategy(self, available: pd.DataFrame, strategy: str, 
+                                 position_counts: dict, round_num: int, picks_made: int) -> pd.DataFrame:
+        """Get candidate players based on AI team strategy."""
+        
+        if strategy == 'zero_rb':
+            # Zero RB: WRs early, avoid RBs until late
+            if round_num <= 6:
+                if position_counts.get('QB', 0) == 0 and round_num == 1:
+                    return available[available['Position'] == 'QB'].head(5)
+                else:
+                    # Prioritize WRs and TEs
+                    return available[available['Position'].isin(['WR', 'TE'])].head(8)
             else:
-                candidates = available_players
+                # Late rounds: fill needs including RBs
+                return self.get_positional_need_candidates(available, position_counts)
+        
+        elif strategy == 'rb_heavy':
+            # RB Heavy: Secure RBs early and often
+            if round_num <= 8 and position_counts.get('RB', 0) < 3:
+                rb_candidates = available[available['Position'] == 'RB'].head(6)
+                if len(rb_candidates) > 0:
+                    return rb_candidates
+            return self.get_positional_need_candidates(available, position_counts)
+        
+        elif strategy == 'value_based':
+            # Strict VBD: Always take highest VBD regardless of position
+            return available.nlargest(6, 'VBD_Value')
+        
+        elif strategy == 'late_round_qb':
+            # Late Round QB: Avoid QB until round 8+
+            if round_num <= 7 and position_counts.get('QB', 0) == 0:
+                return available[available['Position'] != 'QB'].head(8)
+            return self.get_positional_need_candidates(available, position_counts)
+        
+        elif strategy == 'te_premium':
+            # TE Premium: Draft TE earlier than consensus
+            if round_num <= 4 and position_counts.get('TE', 0) == 0:
+                te_candidates = available[available['Position'] == 'TE'].head(4)
+                if len(te_candidates) > 0:
+                    return te_candidates
+            return self.get_positional_need_candidates(available, position_counts)
+        
+        elif strategy == 'upside_hunter':
+            # Target high-upside players
+            upside_candidates = available[
+                (available.get('Value_Pick', False) == True) |
+                (available['VBD_Value'] > available['VBD_Value'].quantile(0.75))
+            ].head(8)
+            if len(upside_candidates) > 0:
+                return upside_candidates
+            return available.head(6)
+        
+        elif strategy == 'safe_floor':
+            # Conservative picks - established players with good floors
+            safe_candidates = available[
+                (available['VBD_Value'] >= 8) & 
+                (available['Overall_Rank'] <= 80)
+            ].head(6)
+            if len(safe_candidates) > 0:
+                return safe_candidates
+            return available.head(6)
+        
+        elif strategy == 'contrarian':
+            # Contrarian picks - sometimes makes surprising choices
+            if random.random() < 0.25:  # 25% chance of contrarian move
+                # Draft K/DEF early or reach for sleepers
+                if round_num <= 6:
+                    contrarian_options = available[available['Position'].isin(['K', 'DEF', 'TE'])].head(3)
+                    if len(contrarian_options) > 0:
+                        return contrarian_options
+            return self.get_positional_need_candidates(available, position_counts)
+        
+        else:  # balanced strategy
+            return self.get_positional_need_candidates(available, position_counts)
 
-        # Add some randomness to make it realistic (top 3-5 players in filtered list)
-        top_candidates = candidates.head(min(5, len(candidates)))
-        if len(top_candidates) == 0:
+    def get_positional_need_candidates(self, available: pd.DataFrame, position_counts: dict) -> pd.DataFrame:
+        """Get candidates based on positional needs."""
+        # Standard positional requirements
+        needs = []
+        
+        if position_counts.get('QB', 0) == 0:
+            needs.append('QB')
+        if position_counts.get('RB', 0) < 2:
+            needs.append('RB')
+        if position_counts.get('WR', 0) < 2:
+            needs.append('WR')
+        if position_counts.get('TE', 0) == 0:
+            needs.append('TE')
+        if position_counts.get('K', 0) == 0:
+            needs.append('K')
+        if position_counts.get('DEF', 0) == 0:
+            needs.append('DEF')
+        
+        if needs:
+            need_candidates = available[available['Position'].isin(needs)].head(8)
+            if len(need_candidates) > 0:
+                return need_candidates
+        
+        # If no specific needs, return best available
+        return available.head(8)
+
+    def select_by_strategy(self, candidates: pd.DataFrame, strategy: str, round_num: int) -> pd.Series:
+        """Select player from candidates based on strategy with realistic variance."""
+        if len(candidates) == 0:
             return None
-
-        # Weight selection towards higher ranked players
-        weights = [1.0 / (i + 1) for i in range(len(top_candidates))]
+        
+        # Strategy-specific selection logic
+        if strategy == 'value_based':
+            # Heavy bias toward top VBD
+            weights = [1.0 / (i + 1) ** 2 for i in range(len(candidates))]
+        elif strategy == 'upside_hunter':
+            # More willing to reach for upside
+            weights = [1.0 / (i + 1) ** 0.7 for i in range(len(candidates))]
+        elif strategy == 'safe_floor':
+            # Prefer consensus picks
+            weights = [1.0 / (i + 1) ** 1.3 for i in range(len(candidates))]
+        elif strategy == 'contrarian':
+            # Sometimes makes unexpected picks
+            if random.random() < 0.2:  # 20% chance of surprise
+                weights = [1.0 for _ in range(len(candidates))]  # Equal probability
+            else:
+                weights = [1.0 / (i + 1) for i in range(len(candidates))]
+        else:
+            # Standard weighting for most strategies
+            weights = [1.0 / (i + 1) ** 1.1 for i in range(len(candidates))]
+        
+        # Add slight randomness for realism
+        randomness = [random.uniform(0.8, 1.2) for _ in range(len(candidates))]
+        weights = [w * r for w, r in zip(weights, randomness)]
+        
+        # Normalize weights
         weights = [w / sum(weights) for w in weights]
-
-        selected_idx = np.random.choice(len(top_candidates), p=weights)
-        return top_candidates.iloc[selected_idx].to_dict()
+        
+        # Select player
+        selected_idx = np.random.choice(len(candidates), p=weights)
+        return candidates.iloc[selected_idx]
 
     def simulate_draft(self, user_picks: List[int]) -> List[dict]:
         """Simulate a full 12-round draft."""
@@ -1542,59 +1612,510 @@ class DraftSimulator:
         return elapsed >= time_limit
 
     def render_user_draft_interface(self, current_pick, remaining_time):
-        """Render enhanced user draft interface with AI suggestions and full player board."""
-        # Timer and urgency indicator
+        """Render enhanced user draft interface with improved containers and organization."""
+        # Calculate picks until next user turn for better context
+        picks_until_next = self.calculate_picks_until_user_turn()
+        
+        # Enhanced timer and urgency indicator with better context
         timer_color = "#ff4444" if remaining_time < 10 else "#ffaa00" if remaining_time < 30 else "#44ff44"
         urgency_class = "timer-urgent" if remaining_time < 10 else ""
         
-        st.markdown(f"""
-        <div class="user-turn-banner {urgency_class}" style="text-align: center; padding: 2rem; margin: 1rem 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px;">
-            <h1 style="margin: 0; font-size: 2.5rem;">🎯 YOUR TURN TO PICK!</h1>
-            <div style="display: flex; justify-content: center; align-items: center; gap: 2rem; margin-top: 1rem;">
-                <div style="font-size: 2rem; color: {timer_color};">⏱️ {remaining_time:.0f}s</div>
-                <div>Pick #{current_pick} | Make your selection below</div>
+        # Main user turn banner with enhanced information
+        with st.container():
+            st.markdown(f"""
+            <div class="user-turn-banner {urgency_class}" style="
+                text-align: center; 
+                padding: 2.5rem; 
+                margin: 1rem 0; 
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                border-radius: 20px;
+                box-shadow: 0 15px 35px rgba(102,126,234,0.4);
+                border: 2px solid rgba(255,255,255,0.2);
+            ">
+                <h1 style="margin: 0; font-size: 3rem; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">🎯 YOUR TURN TO PICK!</h1>
+                <div style="display: flex; justify-content: center; align-items: center; gap: 3rem; margin-top: 1.5rem; flex-wrap: wrap;">
+                    <div style="font-size: 2.5rem; color: {timer_color}; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">⏱️ {remaining_time:.0f}s</div>
+                    <div style="font-size: 1.2rem;">Pick #{current_pick}</div>
+                    <div style="font-size: 1.2rem;">Round {((current_pick - 1) // 10) + 1}</div>
+                    <div style="background: rgba(255,255,255,0.2); padding: 0.5rem 1rem; border-radius: 10px;">
+                        Next Pick in {picks_until_next + 20} picks
+                    </div>
+                </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
-        # Three-column layout: AI Suggestions | Player Board | Team Rosters
-        col1, col2, col3 = st.columns([1, 2, 1])
+        # Enhanced three-column layout with better containers
+        with st.container():
+            col1, col2, col3 = st.columns([1.2, 2.5, 1.3])
+            
+            with col1:
+                # Left sidebar container
+                with st.container():
+                    self.render_enhanced_ai_suggestions()
+                    st.markdown("<div style='margin: 1rem 0;'></div>", unsafe_allow_html=True)
+                    self.render_enhanced_my_team()
+                
+            with col2:
+                # Main draft board container
+                with st.container():
+                    self.render_draft_board(is_user_turn=True)
+                
+            with col3:
+                # Right sidebar container
+                with st.container():
+                    self.render_enhanced_draft_progress()
+                    st.markdown("<div style='margin: 1rem 0;'></div>", unsafe_allow_html=True)
+                    self.render_enhanced_recent_picks()
+
+    def render_enhanced_ai_suggestions(self):
+        """Enhanced AI suggestions with better container styling."""
+        with st.container():
+            st.markdown("""
+            <div style="
+                background: linear-gradient(135deg, rgba(102,126,234,0.2) 0%, rgba(118,75,162,0.2) 100%); 
+                border-radius: 16px; 
+                padding: 2rem; 
+                margin: 1rem 0; 
+                border: 2px solid rgba(102,126,234,0.4); 
+                box-shadow: 0 12px 30px rgba(102,126,234,0.15);
+                backdrop-filter: blur(20px);
+            ">
+                <h3 style="margin-top: 0; color: #667eea; font-size: 1.3rem; text-align: center; font-weight: 700;">
+                    🤖 AI DRAFT ASSISTANT
+                </h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Get AI suggestions with enhanced logic
+            suggestions = self.get_ai_suggestions_for_user()
+            current_round = ((st.session_state.current_pick_number - 1) // 10) + 1
+            
+            # Enhanced draft context
+            user_picks = [pick for pick in st.session_state.draft_results if pick['team'] == 'Your Team']
+            st.markdown(f"""
+            <div style="background: rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; margin: 1rem 0; border: 1px solid rgba(255,255,255,0.2);">
+                <div style="text-align: center; font-weight: 600;">
+                    <div>📊 Round {current_round} Analysis</div>
+                    <div style="font-size: 0.9rem; color: rgba(255,255,255,0.8); margin-top: 0.5rem;">
+                        Picks Made: {len(user_picks)} | Available: {len(st.session_state.available_players)}
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if suggestions:
+                st.markdown("**🎯 Strategic Recommendations:**")
+                
+                for i, player in enumerate(suggestions[:4]):  # Show top 4 suggestions
+                    suggestion_type = player.get('suggestion_type', 'VALUE')
+                    reason = player.get('reason', 'Strong pick at this position')
+                    
+                    # Enhanced suggestion display with better styling
+                    with st.container():
+                        st.markdown(f"""
+                        <div style="
+                            background: rgba(255,255,255,0.08); 
+                            border-radius: 12px; 
+                            padding: 1.2rem; 
+                            margin: 0.8rem 0; 
+                            border: 1px solid rgba(255,255,255,0.15);
+                            transition: all 0.3s ease;
+                        ">
+                        """, unsafe_allow_html=True)
+                        
+                        sug_cols = st.columns([3, 1])
+                        
+                        with sug_cols[0]:
+                            # Enhanced suggestion type indicators
+                            type_styles = {
+                                'NEED': ('🔥', '#ff4444', 'ROSTER NEED'),
+                                'VALUE': ('💎', '#00ff87', 'VALUE PICK'), 
+                                'BPA': ('⭐', '#ffd700', 'BEST AVAILABLE'),
+                                'SLEEPER': ('🚀', '#4facfe', 'SLEEPER PICK')
+                            }
+                            
+                            icon, color, label = type_styles.get(suggestion_type, ('⭐', '#666', 'RECOMMENDED'))
+                            
+                            st.markdown(f"""
+                            <div style="margin-bottom: 0.8rem;">
+                                <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                                    <span style="font-size: 1.3rem; margin-right: 0.7rem;">{icon}</span>
+                                    <span style="background: {color}; color: black; padding: 0.3rem 0.8rem; border-radius: 15px; font-size: 0.7rem; font-weight: bold; margin-right: 0.7rem;">{label}</span>
+                                </div>
+                                <div style="font-weight: bold; font-size: 1.2rem; margin-bottom: 0.3rem;">{player['Player_Name']}</div>
+                                <div style="color: rgba(255,255,255,0.9); font-size: 0.95rem; line-height: 1.4;">{reason}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Enhanced player stats display
+                            stats_cols = st.columns([1, 1, 1, 1])
+                            with stats_cols[0]:
+                                st.markdown(f"<div style='text-align: center; font-size: 0.8rem;'><strong>#{int(player['Overall_Rank'])}</strong><br><small>Rank</small></div>", unsafe_allow_html=True)
+                            with stats_cols[1]:
+                                st.markdown(f"<div style='text-align: center; font-size: 0.8rem;'><strong>{player['VBD_Value']:.1f}</strong><br><small>VBD</small></div>", unsafe_allow_html=True)
+                            with stats_cols[2]:
+                                st.markdown(f"<div style='text-align: center; font-size: 0.8rem;'><strong>#{int(player['Position_Rank'])}</strong><br><small>{player['Position']}</small></div>", unsafe_allow_html=True)
+                            with stats_cols[3]:
+                                st.markdown(f"<div style='text-align: center; font-size: 0.8rem;'><strong>{player.get('Team', 'UNK')}</strong><br><small>Team</small></div>", unsafe_allow_html=True)
+                        
+                        with sug_cols[1]:
+                            if st.button(f"📝 DRAFT", key=f"ai_suggestion_{i}", type="primary", use_container_width=True):
+                                self.make_user_pick(player)
+                                st.rerun()
+                        
+                        st.markdown("</div>", unsafe_allow_html=True)
+                
+                # Enhanced draft insights
+                st.markdown("---")
+                st.markdown("**💡 Advanced Draft Insights:**")
+                insights = self.get_enhanced_draft_insights()
+                for insight in insights[:3]:
+                    st.markdown(f"• {insight}")
+                    
+            else:
+                st.markdown("<div style='text-align: center; color: rgba(255,255,255,0.5); padding: 2rem;'>🔄 Analyzing optimal picks for your roster...</div>", unsafe_allow_html=True)
+
+    def render_enhanced_my_team(self):
+        """Enhanced user team display with better organization."""
+        with st.container():
+            st.markdown("""
+            <div style="
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                border-radius: 16px; 
+                padding: 2rem; 
+                margin: 1rem 0; 
+                box-shadow: 0 12px 30px rgba(102,126,234,0.4);
+                border: 2px solid rgba(255,255,255,0.2);
+            ">
+                <h3 style="margin-top: 0; color: white; font-size: 1.3rem; text-align: center; font-weight: 700;">
+                    🏆 MY DRAFT PICKS
+                </h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            user_picks = [pick for pick in st.session_state.draft_results if pick['team'] == 'Your Team']
+            
+            if user_picks:
+                # Enhanced team display with roster slots
+                for i, pick in enumerate(user_picks):
+                    roster_slot = self.get_user_roster_slot(i + 1)
+                    
+                    # Slot colors
+                    slot_colors = {
+                        'QB': '#e74c3c', 'WR': '#f39c12', 'RB': '#3498db', 
+                        'TE': '#27ae60', 'FLEX': '#9b59b6', 'K': '#34495e', 'DEF': '#7f8c8d', 'BENCH': '#95a5a6'
+                    }
+                    slot_color = slot_colors.get(roster_slot, '#667eea')
+                    
+                    st.markdown(f"""
+                    <div style="
+                        background: rgba(255,255,255,0.1); 
+                        border-radius: 12px; 
+                        padding: 1rem; 
+                        margin: 0.5rem 0; 
+                        border-left: 4px solid {slot_color};
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    ">
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <div style="background: {slot_color}; color: white; padding: 0.4rem 0.8rem; border-radius: 8px; font-weight: bold; font-size: 0.8rem; min-width: 60px; text-align: center;">
+                                {roster_slot}
+                            </div>
+                            <div style="flex-grow: 1;">
+                                <div style="font-weight: 600; font-size: 1rem; margin-bottom: 0.2rem;">{pick['player']}</div>
+                                <div style="font-size: 0.8rem; color: rgba(255,255,255,0.8);">
+                                    R{pick['round']}.{pick['pick'] - (pick['round']-1)*10} | VBD: {pick['vbd']:.1f}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div style="
+                    text-align: center; 
+                    color: rgba(255,255,255,0.6); 
+                    padding: 3rem 1rem;
+                    background: rgba(255,255,255,0.05);
+                    border-radius: 12px;
+                    border: 2px dashed rgba(255,255,255,0.2);
+                    margin: 1rem 0;
+                ">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">🎯</div>
+                    <div style="font-weight: 600;">Your draft picks will appear here</div>
+                    <div style="font-size: 0.9rem; margin-top: 0.5rem;">Start drafting to build your team!</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    def render_enhanced_draft_progress(self):
+        """Enhanced draft progress with better visual organization."""
+        current_pick = st.session_state.current_pick_number
+        max_picks = st.session_state.draft_rounds * 10
+        progress = (current_pick - 1) / max_picks
         
-        with col1:
-            self.render_ai_suggestions()
-            self.render_my_team()
+        with st.container():
+            st.markdown("""
+            <div style="
+                background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.08) 100%); 
+                border-radius: 16px; 
+                padding: 2rem; 
+                margin: 1rem 0; 
+                border: 2px solid rgba(255,255,255,0.2);
+                box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            ">
+                <h3 style="margin-top: 0; color: #667eea; font-size: 1.3rem; text-align: center; font-weight: 700;">
+                    📊 DRAFT PROGRESS
+                </h3>
+            </div>
+            """, unsafe_allow_html=True)
             
-        with col2:
-            self.render_draft_board(is_user_turn=True)
+            # Enhanced progress display
+            st.progress(progress)
             
-        with col3:
-            self.render_draft_progress()
-            self.render_recent_picks()
+            st.markdown(f"""
+            <div style="
+                text-align: center; 
+                padding: 1rem;
+                background: rgba(255,255,255,0.05);
+                border-radius: 12px;
+                margin: 1rem 0;
+            ">
+                <div style="font-size: 1.4rem; font-weight: 700; color: #667eea;">{current_pick - 1} / {max_picks}</div>
+                <div style="font-size: 0.9rem; color: rgba(255,255,255,0.7); margin-top: 0.3rem;">Picks Completed</div>
+                <div style="font-size: 0.8rem; color: rgba(255,255,255,0.6); margin-top: 0.5rem;">
+                    {((progress * 100):.1f}% Complete
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Enhanced position breakdown
+            if st.session_state.draft_results:
+                pos_counts = {}
+                for pick in st.session_state.draft_results:
+                    pos = pick['position']
+                    pos_counts[pos] = pos_counts.get(pos, 0) + 1
+                
+                st.markdown("**📈 Positions Drafted:**")
+                
+                # Create visual position breakdown
+                for pos, count in sorted(pos_counts.items()):
+                    pos_colors = {
+                        'QB': '#e74c3c', 'RB': '#3498db', 'WR': '#f39c12', 
+                        'TE': '#27ae60', 'K': '#9b59b6', 'DEF': '#34495e'
+                    }
+                    pos_color = pos_colors.get(pos, '#666')
+                    
+                    st.markdown(f"""
+                    <div style="
+                        display: flex; 
+                        justify-content: space-between; 
+                        align-items: center; 
+                        padding: 0.5rem; 
+                        margin: 0.3rem 0;
+                        background: rgba(255,255,255,0.05);
+                        border-radius: 8px;
+                        border-left: 4px solid {pos_color};
+                    ">
+                        <span style="font-weight: 600;">{pos}</span>
+                        <span style="background: {pos_color}; color: white; padding: 0.2rem 0.6rem; border-radius: 6px; font-size: 0.8rem; font-weight: bold;">{count}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+    def render_enhanced_recent_picks(self):
+        """Enhanced recent picks with better container and styling."""
+        with st.container():
+            st.markdown("""
+            <div style="
+                background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.08) 100%); 
+                border-radius: 16px; 
+                padding: 2rem; 
+                margin: 1rem 0; 
+                border: 2px solid rgba(255,255,255,0.2);
+                box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            ">
+                <h3 style="margin-top: 0; color: #667eea; font-size: 1.3rem; text-align: center; font-weight: 700;">
+                    📋 LIVE DRAFT FEED
+                </h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            recent_picks = st.session_state.draft_results[-8:] if st.session_state.draft_results else []
+            
+            if recent_picks:
+                # Enhanced scrollable container for recent picks
+                st.markdown("""
+                <div style="
+                    max-height: 400px;
+                    overflow-y: auto;
+                    border: 2px solid rgba(255,255,255,0.2);
+                    border-radius: 12px;
+                    background: rgba(0,0,0,0.1);
+                    padding: 1rem;
+                ">
+                """, unsafe_allow_html=True)
+                
+                for i, pick_info in enumerate(reversed(recent_picks)):
+                    team_color = "#667eea" if "Your Team" in pick_info['team'] else "#888"
+                    is_user_pick = "Your Team" in pick_info['team']
+                    
+                    # Position colors
+                    pos_colors = {
+                        'QB': '#e74c3c', 'RB': '#3498db', 'WR': '#f39c12', 
+                        'TE': '#27ae60', 'K': '#9b59b6', 'DEF': '#34495e'
+                    }
+                    pos_color = pos_colors.get(pick_info['position'], '#666')
+                    
+                    # Enhanced pick display
+                    st.markdown(f"""
+                    <div style="
+                        background: {'rgba(102,126,234,0.15)' if is_user_pick else 'rgba(255,255,255,0.05)'};
+                        border-radius: 10px;
+                        padding: 1rem;
+                        margin: 0.5rem 0;
+                        border: {'2px solid rgba(102,126,234,0.4)' if is_user_pick else '1px solid rgba(255,255,255,0.1)'};
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                    ">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="flex-grow: 1;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem;">
+                                    <div style="background: {team_color}; color: white; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.7rem; font-weight: bold;">
+                                        #{pick_info['pick']}
+                                    </div>
+                                    <span style="font-weight: 600; font-size: 0.9rem;">{'🎯 ' if is_user_pick else ''}{pick_info['player']}</span>
+                                </div>
+                                <div style="font-size: 0.8rem; color: rgba(255,255,255,0.7);">
+                                    <span style="background: {pos_color}; color: white; padding: 0.1rem 0.4rem; border-radius: 4px; margin-right: 0.5rem;">{pick_info['position']}</span>
+                                    {pick_info['team']} | VBD: {pick_info['vbd']:.1f}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("</div>", unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div style="
+                    text-align: center; 
+                    color: rgba(255,255,255,0.5); 
+                    padding: 3rem 1rem;
+                    background: rgba(255,255,255,0.05);
+                    border-radius: 12px;
+                    border: 2px dashed rgba(255,255,255,0.2);
+                ">
+                    <div style="font-size: 2.5rem; margin-bottom: 1rem;">📋</div>
+                    <div>Draft picks will appear here</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    def get_enhanced_draft_insights(self):
+        """Generate enhanced contextual draft insights."""
+        insights = []
+        user_picks = [pick for pick in st.session_state.draft_results if pick['team'] == 'Your Team']
+        current_round = ((st.session_state.current_pick_number - 1) // 10) + 1
+        available = st.session_state.available_players
+        
+        # Enhanced position scarcity insights
+        rb_left = len(available[available['Position'] == 'RB'])
+        wr_left = len(available[available['Position'] == 'WR'])
+        qb_left = len(available[available['Position'] == 'QB'])
+        te_left = len(available[available['Position'] == 'TE'])
+        
+        user_positions = {}
+        for pick in user_picks:
+            pos = pick['position']
+            user_positions[pos] = user_positions.get(pos, 0) + 1
+        
+        # Advanced scarcity alerts
+        if current_round <= 8 and user_positions.get('RB', 0) < 2 and rb_left <= 20:
+            insights.append(f"🚨 RB Crisis: Only {rb_left} RBs left - secure workhorse backs now")
+        
+        if current_round >= 6 and user_positions.get('QB', 0) == 0 and qb_left <= 12:
+            insights.append(f"⚡ QB Tier Drop: {qb_left} QBs remain - streaming tier approaching")
+        
+        if current_round <= 10 and user_positions.get('TE', 0) == 0 and te_left <= 8:
+            insights.append(f"🎯 TE Premium: Only {te_left} viable TEs left - consider elite option")
+        
+        # Value opportunities with enhanced analysis
+        elite_remaining = len(available[available['VBD_Value'] > 15])
+        value_picks_available = len(available[available.get('Value_Pick', False) == True])
+        
+        if elite_remaining > 0:
+            insights.append(f"💎 Elite Alert: {elite_remaining} premium players (15+ VBD) still available")
+        
+        if value_picks_available > 0:
+            insights.append(f"🤖 AI Value Picks: {value_picks_available} undervalued players identified")
+        
+        # Enhanced round-specific strategy advice
+        if current_round <= 3:
+            insights.append("🏆 Early Round Focus: Secure elite talent at scarce positions (RB/WR priority)")
+        elif current_round <= 6:
+            insights.append("⚖️ Value Round Strategy: Balance roster needs with best available talent")
+        elif current_round <= 9:
+            insights.append("🏗️ Foundation Complete: Fill remaining starters (TE/QB if needed)")
+        else:
+            insights.append("🎲 Upside Hunting: Target breakout candidates and handcuff values")
+            
+        return insights
     
     def render_ai_draft_interface(self, team_index, current_pick):
-        """Render interface during AI turns."""
+        """Enhanced interface during AI turns with better organization and AI personality display."""
         team_name = f"AI Team {team_index + 1}"
+        round_num = ((current_pick - 1) // 10) + 1
+        picks_until_user = self.calculate_picks_until_user_turn()
         
-        st.markdown(f"""
-        <div class="ai-turn-banner" style="text-align: center; padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%); border-radius: 15px;">
-            <h2 style="margin: 0;">🤖 {team_name} is selecting...</h2>
-            <div style="margin-top: 1rem;">
-                <div class="thinking-dots">Analyzing available players</div>
-                <div style="margin-top: 0.5rem; font-size: 0.9rem; color: rgba(255,255,255,0.7);">Pick #{current_pick} | AI making strategic choice</div>
+        # Enhanced AI turn banner with personality and context
+        ai_personalities = [
+            '🧠 Analytics Expert', '💎 Value Hunter', '🏆 Best Available', '🎯 Sleeper Specialist',
+            '🛡️ Conservative', '⚡ Aggressive', '⚖️ Balanced', '🔄 Contrarian', '📊 Data Driven'
+        ]
+        ai_personality = ai_personalities[team_index % len(ai_personalities)]
+        
+        with st.container():
+            st.markdown(f"""
+            <div style="
+                text-align: center; 
+                padding: 2rem; 
+                margin: 1rem 0; 
+                background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.08) 100%); 
+                border-radius: 20px;
+                border: 2px solid rgba(255,255,255,0.2);
+                box-shadow: 0 12px 30px rgba(0,0,0,0.15);
+                backdrop-filter: blur(20px);
+            ">
+                <h1 style="margin: 0; font-size: 2.2rem; color: #667eea;">🤖 {team_name} Drafting...</h1>
+                <div style="margin: 1rem 0;">
+                    <div style="font-size: 1.1rem; color: rgba(255,255,255,0.9); margin-bottom: 0.5rem;">
+                        {ai_personality} | Round {round_num} | Pick #{current_pick}
+                    </div>
+                    <div style="display: flex; justify-content: center; gap: 2rem; margin-top: 1rem; flex-wrap: wrap;">
+                        <div style="background: rgba(102,126,234,0.2); padding: 0.5rem 1rem; border-radius: 10px;">
+                            ⏳ Analyzing best options...
+                        </div>
+                        <div style="background: rgba(255,255,255,0.1); padding: 0.5rem 1rem; border-radius: 10px;">
+                            🎯 Your turn in {picks_until_user} picks
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
         
-        # Two-column layout during AI turns
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            self.render_draft_board(is_user_turn=False)
+        # Enhanced layout during AI turns with better containers
+        with st.container():
+            col1, col2 = st.columns([2.5, 1.5])
             
-        with col2:
-            self.render_draft_progress()
-            self.render_recent_picks()
-            self.render_my_team()
+            with col1:
+                # Main draft board with enhanced container
+                with st.container():
+                    self.render_draft_board(is_user_turn=False)
+                
+            with col2:
+                # Right sidebar with organized containers
+                with st.container():
+                    self.render_enhanced_draft_progress()
+                    st.markdown("<div style='margin: 1.5rem 0;'></div>", unsafe_allow_html=True)
+                    self.render_enhanced_recent_picks()
+                    st.markdown("<div style='margin: 1.5rem 0;'></div>", unsafe_allow_html=True)
+                    self.render_enhanced_my_team()
 
     def render_ai_suggestions(self):
         """Render enhanced AI-suggested players for the user."""
@@ -1680,19 +2201,55 @@ class DraftSimulator:
                 st.markdown("<div style='text-align: center; color: rgba(255,255,255,0.5); padding: 1rem;'>🔄 Analyzing optimal picks for your roster...</div>", unsafe_allow_html=True)
 
     def render_draft_board(self, is_user_turn=False):
-        """Render the complete draft board with all available players in a clean table format."""
-        st.markdown("### 📋 DRAFT BOARD")
+        """Render the complete draft board with all available players in a scrollable table."""
+        # Show picks until user's next turn
+        current_pick = st.session_state.current_pick_number
+        user_position = st.session_state.user_draft_position
         
-        # Filters in a container
+        # Calculate next user pick
+        picks_until_user = self.calculate_picks_until_user_turn()
+        
+        # Draft board container with better organization
         with st.container():
-            filter_col1, filter_col2 = st.columns([1, 1])
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%); 
+                       border-radius: 16px; padding: 2rem; margin: 1rem 0; 
+                       border: 2px solid rgba(255,255,255,0.2); box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <h3 style="margin: 0; color: #667eea; font-size: 1.5rem;">📋 AVAILABLE PLAYERS</h3>
+                    <div style="text-align: right;">
+                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                   color: white; padding: 0.8rem 1.5rem; border-radius: 12px; 
+                                   font-weight: bold; box-shadow: 0 4px 15px rgba(102,126,234,0.3);">
+                            🎯 Next User Pick: {picks_until_user} picks away
+                        </div>
+                        <div style="font-size: 0.9rem; color: rgba(255,255,255,0.7); margin-top: 0.5rem;">
+                            Position: #{user_position} | Available: {len(st.session_state.available_players)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
             
-            with filter_col1:
-                positions = ['ALL'] + sorted(st.session_state.available_players['Position'].unique())
-                selected_pos = st.selectbox("Position", positions, key="pos_filter")
-            
-            with filter_col2:
-                search_term = st.text_input("🔍 Search Players", placeholder="Player name...", key="board_search")
+            # Filters in a better organized container
+            with st.container():
+                st.markdown("""
+                <div style="background: rgba(255,255,255,0.08); border-radius: 12px; padding: 1.5rem; margin: 1rem 0; border: 1px solid rgba(255,255,255,0.1);">
+                """, unsafe_allow_html=True)
+                
+                filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 1])
+                
+                with filter_col1:
+                    positions = ['ALL'] + sorted(st.session_state.available_players['Position'].unique())
+                    selected_pos = st.selectbox("🎯 Filter Position", positions, key="pos_filter")
+                
+                with filter_col2:
+                    search_term = st.text_input("🔍 Search Players", placeholder="Player name...", key="board_search")
+                
+                with filter_col3:
+                    show_count = st.selectbox("📊 Show Players", [25, 50, 100, "All"], index=0)
+                
+                st.markdown("</div>", unsafe_allow_html=True)
         
         # Filter players
         filtered_players = st.session_state.available_players.copy()
@@ -1703,35 +2260,146 @@ class DraftSimulator:
                 filtered_players['Player_Name'].str.contains(search_term, case=False, na=False)
             ]
         
-        # Sort by overall rank and limit results for performance
-        filtered_players = filtered_players.sort_values('Overall_Rank').head(20)  # Reduced from 30 to 20 for better performance
+        # Sort by overall rank and apply show count
+        filtered_players = filtered_players.sort_values('Overall_Rank')
+        if show_count != "All":
+            filtered_players = filtered_players.head(show_count)
         
-        # Player table container
+        # Scrollable player table container with enhanced styling
         with st.container():
-            st.markdown("""<div style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 1rem; margin: 1rem 0;">""")
+            st.markdown(f"""
+            <div style="
+                background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+                backdrop-filter: blur(15px);
+                border-radius: 16px;
+                padding: 1.5rem;
+                margin: 1rem 0;
+                border: 2px solid rgba(255,255,255,0.2);
+                box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            ">
+                <div style="
+                    max-height: 500px;
+                    overflow-y: auto;
+                    overflow-x: hidden;
+                    border: 2px solid rgba(255,255,255,0.2);
+                    border-radius: 12px;
+                    background: rgba(0,0,0,0.1);
+                    padding: 1rem;
+                ">
+            """, unsafe_allow_html=True)
             
-            # Table header
+            # Enhanced table header with better styling
             header_cols = st.columns([1, 3, 1, 1, 1, 2])
             with header_cols[0]:
-                st.markdown("**Rank**")
+                st.markdown("**🏆 Rank**")
             with header_cols[1]:
-                st.markdown("**Player**")
+                st.markdown("**👤 Player**")
             with header_cols[2]:
-                st.markdown("**Pos**")
+                st.markdown("**📍 Pos**")
             with header_cols[3]:
-                st.markdown("**Team**")
+                st.markdown("**🏟️ Team**")
             with header_cols[4]:
-                st.markdown("**VBD**")
+                st.markdown("**📊 VBD**")
             with header_cols[5]:
-                st.markdown("**Action**")
+                st.markdown("**⚡ Action**")
             
-            st.markdown("---")
+            st.markdown("<hr style='margin: 1rem 0; border: 2px solid rgba(255,255,255,0.3);'>", unsafe_allow_html=True)
             
-            # Player rows
+            # Player rows with enhanced styling
             for idx, (_, player) in enumerate(filtered_players.iterrows()):
-                self.render_player_table_row(player, idx, is_user_turn)
+                self.render_enhanced_player_row(player, idx, is_user_turn)
             
-            st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("</div></div>", unsafe_allow_html=True)
+
+    def calculate_picks_until_user_turn(self) -> int:
+        """Calculate how many picks until the user's next turn."""
+        current_pick = st.session_state.current_pick_number
+        user_position = st.session_state.user_draft_position
+        
+        # Find next user pick
+        next_user_pick = current_pick
+        while next_user_pick <= 120:  # 12 rounds * 10 teams
+            team_index = self.get_pick_order(next_user_pick)
+            if team_index == user_position - 1:
+                return next_user_pick - current_pick
+            next_user_pick += 1
+        
+        return 0  # Draft complete
+
+    def render_enhanced_player_row(self, player, idx, is_user_turn):
+        """Render enhanced individual player row with better styling."""
+        # Position-based styling
+        pos_colors = {
+            'QB': '#e74c3c', 'RB': '#3498db', 'WR': '#f39c12', 
+            'TE': '#27ae60', 'K': '#9b59b6', 'DEF': '#34495e'
+        }
+        pos_color = pos_colors.get(player['Position'], '#666')
+        
+        # Create enhanced table row with hover effects
+        row_cols = st.columns([1, 3, 1, 1, 1, 2])
+        
+        # Row styling with alternating colors
+        row_bg = "rgba(255,255,255,0.08)" if idx % 2 == 0 else "rgba(255,255,255,0.04)"
+        
+        st.markdown(f"""
+        <div style="
+            background: {row_bg}; 
+            border-radius: 8px; 
+            padding: 0.8rem 0.5rem; 
+            margin: 0.3rem 0;
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.2s ease;
+        ">
+        """, unsafe_allow_html=True)
+        
+        with row_cols[0]:
+            rank_color = "#FFD700" if player['Overall_Rank'] <= 10 else "#C0C0C0" if player['Overall_Rank'] <= 25 else "#CD7F32" if player['Overall_Rank'] <= 50 else "#666"
+            st.markdown(f"<div style='font-weight: bold; color: {rank_color}; font-size: 1.1rem;'>#{int(player['Overall_Rank'])}</div>", unsafe_allow_html=True)
+            
+        with row_cols[1]:
+            # Enhanced player name display with value indicators
+            player_name = str(player.get('Player_Name', 'Unknown Player'))
+            value_indicator = "💎 " if player.get('Value_Pick', False) else ""
+            st.markdown(f"<div style='font-weight: 600; font-size: 1rem;'>{value_indicator}{player_name}</div>", unsafe_allow_html=True)
+            
+        with row_cols[2]:
+            st.markdown(f"<span style='background: {pos_color}; color: white; padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.8rem; font-weight: bold;'>{player['Position']}</span>", unsafe_allow_html=True)
+            
+        with row_cols[3]:
+            team_name = str(player.get('Team', 'UNK'))
+            st.markdown(f"<div style='font-weight: 500;'>{team_name}</div>", unsafe_allow_html=True)
+            
+        with row_cols[4]:
+            try:
+                vbd_val = float(player.get('VBD_Value', 0))
+            except (ValueError, TypeError):
+                vbd_val = 0.0
+                
+            if vbd_val >= 15:
+                vbd_color = '#00ff87'  # Elite
+                vbd_emoji = '🔥'
+            elif vbd_val >= 10:
+                vbd_color = '#4facfe'  # High
+                vbd_emoji = '⭐'
+            elif vbd_val >= 5:
+                vbd_color = '#43e97b'  # Medium
+                vbd_emoji = '📈'
+            else:
+                vbd_color = '#fa709a'  # Low
+                vbd_emoji = '📊'
+            st.markdown(f"<div style='color: {vbd_color}; font-weight: bold; font-size: 1rem;'>{vbd_emoji} {vbd_val:.1f}</div>", unsafe_allow_html=True)
+            
+        with row_cols[5]:
+            if is_user_turn:
+                player_name = str(player.get('Player_Name', f'player_{idx}'))
+                button_key = f"draft_{player_name}_{idx}"
+                if st.button(f"📝 DRAFT", key=button_key, type="primary", use_container_width=True):
+                    self.make_user_pick(player)
+                    st.rerun()
+            else:
+                st.markdown("<div style='text-align: center; padding: 0.6rem; background: rgba(102,126,234,0.1); border-radius: 8px; font-size: 0.8rem; color: rgba(255,255,255,0.7);'>Available</div>", unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
 
     def render_player_table_row(self, player, idx, is_user_turn):
         """Render individual player row in the draft board table."""
@@ -2131,19 +2799,19 @@ class DraftSimulator:
         st.success(f"🎯 Excellent pick! You drafted {pick_info['player']} ({pick_info['position']}) in Round {pick_info['round']}")
 
     def handle_ai_pick(self):
-        """Handle AI picks with optimized timer."""
+        """Handle AI picks with faster, more realistic timing and improved logic."""
         if not st.session_state.pick_timer_start:
             self.start_pick_timer()
             return
             
         elapsed = (datetime.now() - st.session_state.pick_timer_start).total_seconds()
         
-        # AI picks after 4-7 seconds (more consistent timing)
+        # Faster AI picks: 1.5-3 seconds (more realistic draft pace)
         if not hasattr(st.session_state, 'ai_pick_time'):
-            st.session_state.ai_pick_time = random.uniform(4, 7)
+            st.session_state.ai_pick_time = random.uniform(1.5, 3.0)
         
         if elapsed >= st.session_state.ai_pick_time and not st.session_state.waiting_for_user_pick:
-            # Make AI pick
+            # Make AI pick with enhanced logic
             simulator = st.session_state.draft_simulator
             team_index = simulator.get_pick_order(st.session_state.current_pick_number)
             
@@ -2152,14 +2820,9 @@ class DraftSimulator:
                 if team_index == st.session_state.user_draft_position - 1:
                     return  # This is actually the user's turn, don't make AI pick
                 
-                # Map team index to AI team (exclude user position)
-                ai_teams_mapping = [i for i in range(10) if i != st.session_state.user_draft_position - 1]
-                if team_index < len(ai_teams_mapping):
-                    ai_team_index = ai_teams_mapping.index(team_index) if team_index in ai_teams_mapping else 0
-                else:
-                    ai_team_index = 0
-                
-                ai_pick = simulator.ai_draft_pick(ai_team_index, st.session_state.available_players)
+                # Enhanced AI team mapping
+                ai_team_index = self.get_ai_team_index(team_index)
+                ai_pick = self.make_enhanced_ai_pick(ai_team_index, st.session_state.available_players)
                 
                 if ai_pick:
                     pick_info = {
@@ -2195,18 +2858,227 @@ class DraftSimulator:
                     if st.session_state.current_pick_number > max_picks:
                         st.session_state.draft_completed = True
                     
-                    # Show pick notification
-                    st.info(f"🤖 Pick #{pick_info['pick']}: {pick_info['team']} selected {pick_info['player']} ({pick_info['position']})")
+                    # Enhanced pick notification with more context
+                    round_num = pick_info['round']
+                    pick_context = self.get_pick_context(pick_info)
+                    st.success(f"🤖 R{round_num} Pick #{pick_info['pick']}: {pick_info['team']} selected {pick_info['player']} ({pick_info['position']}) {pick_context}")
                     
                     st.rerun()
         
-        # Optimized refresh - only refresh if timer is active and pick hasn't been made
+        # More responsive refresh timing
         if not st.session_state.waiting_for_user_pick and st.session_state.pick_timer_start:
             elapsed = (datetime.now() - st.session_state.pick_timer_start).total_seconds()
-            # Only refresh every 0.5 seconds instead of constantly
-            if elapsed < 10:  # Only refresh for first 10 seconds of AI turn
-                time.sleep(0.5)
+            # Faster refresh rate for better user experience
+            if elapsed < 5:  # Refresh more frequently during AI pick window
+                time.sleep(0.3)
                 st.rerun()
+
+    def get_ai_team_index(self, team_index: int) -> int:
+        """Get correct AI team index with improved mapping."""
+        # Map team index to AI team (exclude user position)
+        ai_teams_mapping = [i for i in range(10) if i != st.session_state.user_draft_position - 1]
+        
+        if team_index < len(ai_teams_mapping):
+            return ai_teams_mapping.index(team_index) if team_index in ai_teams_mapping else 0
+        else:
+            return 0
+
+    def make_enhanced_ai_pick(self, ai_team_index: int, available_players: pd.DataFrame) -> dict:
+        """Enhanced AI pick logic with more realistic decision making."""
+        simulator = st.session_state.draft_simulator
+        
+        # Ensure valid AI team index
+        if ai_team_index < 0 or ai_team_index >= 9:
+            ai_team_index = 0
+        
+        team_roster = simulator.ai_teams[ai_team_index]
+        current_round = ((st.session_state.current_pick_number - 1) // 10) + 1
+        
+        # Advanced AI logic based on draft philosophy
+        ai_personalities = [
+            'value_focused',    # Strictly follows VBD
+            'positional_need',  # Fills roster slots methodically  
+            'best_available',   # Always takes highest ranked
+            'sleeper_hunter',   # Looks for breakout candidates
+            'conservative',     # Safe, proven players
+            'aggressive',       # High upside, high risk
+            'balanced',         # Mix of strategies
+            'contrarian',       # Goes against conventional wisdom
+            'analytics_heavy'   # Data-driven decisions
+        ]
+        
+        # Assign AI personality based on team index
+        ai_personality = ai_personalities[ai_team_index % len(ai_personalities)]
+        
+        # Get team needs analysis
+        position_counts = {}
+        for player in team_roster:
+            pos = player.get('Position', 'UNKNOWN')
+            position_counts[pos] = position_counts.get(pos, 0) + 1
+        
+        # Apply AI personality to pick selection
+        candidates = self.filter_candidates_by_ai_logic(
+            available_players, ai_personality, position_counts, current_round, team_roster
+        )
+        
+        if len(candidates) == 0:
+            candidates = available_players.head(10)  # Fallback to top players
+        
+        # Select player with personality-based weighting
+        selected_player = self.select_player_with_personality(candidates, ai_personality, current_round)
+        
+        return selected_player.to_dict() if selected_player is not None else None
+
+    def filter_candidates_by_ai_logic(self, available: pd.DataFrame, personality: str, 
+                                    position_counts: dict, current_round: int, team_roster: list) -> pd.DataFrame:
+        """Filter candidates based on AI personality and advanced logic."""
+        if personality == 'value_focused':
+            # VBD-focused: Top VBD players regardless of position
+            return available.nlargest(8, 'VBD_Value')
+        
+        elif personality == 'positional_need':
+            # Methodical roster building
+            needed_positions = self.get_positional_needs(position_counts, current_round)
+            if needed_positions:
+                return available[available['Position'].isin(needed_positions)].head(10)
+            return available.head(8)
+        
+        elif personality == 'best_available':
+            # Strictly by overall rank
+            return available.head(5)
+        
+        elif personality == 'sleeper_hunter':
+            # Look for high upside players ranked lower
+            if current_round >= 6:
+                sleepers = available[
+                    (available['VBD_Value'] > 8) & 
+                    (available['Overall_Rank'] > 60)
+                ]
+                if len(sleepers) > 0:
+                    return sleepers.head(6)
+            return available.head(8)
+        
+        elif personality == 'conservative':
+            # Prefer proven, safe picks with good floors
+            return available[available['VBD_Value'] >= 5].head(8)
+        
+        elif personality == 'aggressive':
+            # High ceiling players, might reach for upside
+            high_upside = available[
+                (available.get('Value_Pick', False) == True) |
+                (available['VBD_Value'] > 12)
+            ]
+            if len(high_upside) > 0:
+                return high_upside.head(6)
+            return available.head(8)
+        
+        elif personality == 'contrarian':
+            # Goes against the grain, might draft positions early/late
+            if current_round <= 5:
+                # Might draft TE or QB early
+                contrarian_picks = available[available['Position'].isin(['TE', 'QB'])].head(3)
+                if len(contrarian_picks) > 0:
+                    return pd.concat([contrarian_picks, available.head(5)])
+            return available.head(8)
+        
+        elif personality == 'analytics_heavy':
+            # Heavy focus on advanced metrics and value picks
+            analytics_picks = available[
+                (available.get('Value_Pick', False) == True) |
+                (available['VBD_Value'] > available['VBD_Value'].quantile(0.7))
+            ]
+            if len(analytics_picks) > 0:
+                return analytics_picks.head(8)
+            return available.head(6)
+        
+        else:  # balanced
+            # Mix of BPA and positional need
+            bpa_count = 4
+            need_count = 4
+            
+            bpa_players = available.head(bpa_count)
+            needed_positions = self.get_positional_needs(position_counts, current_round)
+            
+            if needed_positions:
+                need_players = available[available['Position'].isin(needed_positions)].head(need_count)
+                return pd.concat([bpa_players, need_players]).drop_duplicates()
+            
+            return bpa_players
+
+    def get_positional_needs(self, position_counts: dict, current_round: int) -> list:
+        """Get positional needs for AI team based on current roster and round."""
+        needs = []
+        
+        # Basic positional requirements check
+        if position_counts.get('QB', 0) == 0 and current_round <= 8:
+            needs.append('QB')
+        
+        if position_counts.get('RB', 0) < 2 and current_round <= 10:
+            needs.append('RB')
+        
+        if position_counts.get('WR', 0) < 2 and current_round <= 10:
+            needs.append('WR')
+        
+        if position_counts.get('TE', 0) == 0 and current_round <= 12:
+            needs.append('TE')
+        
+        # Late round needs
+        if current_round >= 8:
+            if position_counts.get('K', 0) == 0:
+                needs.append('K')
+            if position_counts.get('DEF', 0) == 0:
+                needs.append('DEF')
+        
+        return needs
+
+    def select_player_with_personality(self, candidates: pd.DataFrame, 
+                                     personality: str, current_round: int) -> pd.Series:
+        """Select player from candidates based on AI personality."""
+        if len(candidates) == 0:
+            return None
+        
+        # Personality-based selection weights
+        if personality in ['value_focused', 'analytics_heavy']:
+            # Heavy bias toward top VBD
+            weights = [1.0 / (i + 1) ** 1.5 for i in range(len(candidates))]
+        elif personality == 'best_available':
+            # Strong bias toward top ranked
+            weights = [1.0 / (i + 1) ** 2 for i in range(len(candidates))]
+        elif personality in ['sleeper_hunter', 'aggressive']:
+            # More random, willing to reach
+            weights = [1.0 / (i + 1) ** 0.8 for i in range(len(candidates))]
+        elif personality == 'contrarian':
+            # Sometimes picks unexpectedly
+            if random.random() < 0.3:  # 30% chance of surprise pick
+                weights = [1.0 for _ in range(len(candidates))]  # Equal probability
+            else:
+                weights = [1.0 / (i + 1) for i in range(len(candidates))]
+        else:  # conservative, balanced, positional_need
+            # Moderate bias toward top players
+            weights = [1.0 / (i + 1) for i in range(len(candidates))]
+        
+        # Normalize weights
+        weights = [w / sum(weights) for w in weights]
+        
+        # Select player
+        selected_idx = np.random.choice(len(candidates), p=weights)
+        return candidates.iloc[selected_idx]
+
+    def get_pick_context(self, pick_info: dict) -> str:
+        """Get contextual information about the pick."""
+        vbd = pick_info.get('vbd', 0)
+        overall_rank = pick_info.get('overall_rank', 999)
+        
+        if vbd > 20:
+            return "🔥 (Elite Pick!)"
+        elif vbd > 15:
+            return "⭐ (Great Value)"
+        elif overall_rank <= 10:
+            return "👑 (Top 10 Player)"
+        elif overall_rank <= 25:
+            return "📈 (Solid Pick)"
+        else:
+            return "📊 (Depth Pick)"
 
     def display_draft_results_and_grading(self):
         """Display draft results with AI grading and analytics."""
