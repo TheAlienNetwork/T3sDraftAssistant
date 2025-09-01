@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -19,7 +20,7 @@ warnings.filterwarnings('ignore')
 
 # Page configuration
 st.set_page_config(
-    page_title="Fantasy Football 2025 Rankings",
+    page_title="T3's AI Powered Fantasy Football 2025",
     page_icon="🏈",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -38,6 +39,43 @@ st.markdown("""
     .stApp {
         background: linear-gradient(135deg, #0f0c29 0%, #24243e 50%, #302b63 100%);
         color: white;
+    }
+
+    .navbar {
+        background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.08) 100%);
+        backdrop-filter: blur(20px);
+        border-radius: 15px;
+        padding: 1rem 2rem;
+        margin: 1rem 0;
+        border: 1px solid rgba(255,255,255,0.2);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 2rem;
+    }
+
+    .nav-button {
+        padding: 0.75rem 1.5rem;
+        border-radius: 10px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        border: 1px solid rgba(255,255,255,0.2);
+        background: rgba(255,255,255,0.1);
+        color: white;
+        text-decoration: none;
+    }
+
+    .nav-button:hover {
+        background: rgba(255,255,255,0.2);
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+
+    .nav-button.active {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        box-shadow: 0 5px 15px rgba(102,126,234,0.3);
     }
 
     .hero-header {
@@ -80,6 +118,28 @@ st.markdown("""
         font-weight: 400;
         color: rgba(255,255,255,0.8);
         margin-bottom: 0;
+    }
+
+    .vbd-analysis-container {
+        background: linear-gradient(135deg, rgba(102,126,234,0.15) 0%, rgba(118,75,162,0.15) 100%);
+        backdrop-filter: blur(20px);
+        border-radius: 20px;
+        padding: 2rem;
+        margin: 2rem 0;
+        border: 2px solid rgba(102,126,234,0.3);
+        box-shadow: 0 20px 40px rgba(102,126,234,0.1);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .vbd-analysis-container::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
     }
 
     .advanced-card {
@@ -283,6 +343,61 @@ st.markdown("""
         border: 1px solid rgba(255,255,255,0.1);
         backdrop-filter: blur(15px);
     }
+
+    .draft-container {
+        background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+        backdrop-filter: blur(15px);
+        border-radius: 16px;
+        padding: 2rem;
+        margin: 1rem 0;
+        border: 1px solid rgba(255,255,255,0.1);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    .draft-pick {
+        background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%);
+        border-radius: 10px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        border: 1px solid rgba(255,255,255,0.1);
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .pick-number {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.5rem;
+        border-radius: 8px;
+        font-weight: 700;
+        min-width: 60px;
+        text-align: center;
+    }
+
+    .team-badge {
+        display: inline-block;
+        padding: 0.3rem 0.8rem;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 0.8rem;
+        margin: 0.2rem;
+        text-transform: uppercase;
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        color: white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .bye-week {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 8px;
+        font-weight: 500;
+        font-size: 0.7rem;
+        background: rgba(255,255,255,0.15);
+        color: #fff;
+        border: 1px solid rgba(255,255,255,0.2);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -396,7 +511,7 @@ class AdvancedFantasyAnalyzer:
                                 df['Sheet_Source'] = sheet_name
                                 df['VBD_Value'] = vbd_value
 
-                                # Extract additional data
+                                # Extract additional data including team and bye week
                                 df = self.extract_player_data(df, position)
 
                                 all_players.append(df)
@@ -443,20 +558,41 @@ class AdvancedFantasyAnalyzer:
             return None
 
     def extract_player_data(self, df: pd.DataFrame, position: str) -> pd.DataFrame:
-        """Extract player names and additional data."""
-        # Find player name column (usually first non-empty column)
-        name_col = None
+        """Extract player names and additional data including team information."""
+        # Extract first name (Column A), last name (Column B), team (Column C)
+        if len(df.columns) > 0:
+            df['First_Name'] = df.iloc[:, 0].astype(str).fillna('')
+        else:
+            df['First_Name'] = ''
+
+        if len(df.columns) > 1:
+            df['Last_Name'] = df.iloc[:, 1].astype(str).fillna('')
+        else:
+            df['Last_Name'] = ''
+
+        if len(df.columns) > 2:
+            df['Team'] = df.iloc[:, 2].astype(str).fillna('')
+        else:
+            df['Team'] = ''
+
+        # Create full player name
+        df['Player_Name'] = (df['First_Name'] + ' ' + df['Last_Name']).str.strip()
+        df = df[df['Player_Name'].str.strip() != '']
+        df = df[df['Player_Name'] != 'nan nan']
+
+        # Extract bye week information (look for common bye week columns)
+        bye_week_col = None
         for col in df.columns:
-            if df[col].notna().sum() > len(df) * 0.5:
-                name_col = col
+            col_lower = str(col).lower()
+            if any(keyword in col_lower for keyword in ['bye', 'week', 'off']):
+                bye_week_col = col
                 break
 
-        if name_col is None:
-            name_col = df.columns[0]
-
-        df['Player_Name'] = df[name_col].astype(str)
-        df = df[df['Player_Name'].str.strip() != '']
-        df = df[df['Player_Name'] != 'nan']
+        if bye_week_col:
+            df['Bye_Week'] = pd.to_numeric(df[bye_week_col], errors='coerce').fillna(0).astype(int)
+        else:
+            # Assign random bye weeks if not found
+            df['Bye_Week'] = np.random.choice([4, 5, 6, 7, 9, 10, 11, 12, 13, 14], size=len(df))
 
         # Extract Points column if available
         points_col = self.find_points_column(df)
@@ -722,7 +858,7 @@ class AdvancedFantasyAnalyzer:
         """Render detailed player analysis modal."""
         st.markdown(f"""
         <div class="advanced-card">
-            <h2 style="margin-bottom: 1rem;">🏈 {player_data['Player_Name']}</h2>
+            <h2 style="margin-bottom: 1rem;">🏈 {player_data['Player_Name']} ({player_data.get('Team', 'Unknown Team')})</h2>
         </div>
         """, unsafe_allow_html=True)
 
@@ -764,26 +900,11 @@ class AdvancedFantasyAnalyzer:
             st.markdown(f'<div class="draft-round-badge {round_class}">{draft_round}</div>', 
                        unsafe_allow_html=True)
 
-        # Tabs for detailed analysis
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 VBD Analysis", "📰 News & Intel", "🤖 AI Insights", "📈 Comparison"])
-
-        with tab1:
-            self.render_vbd_analysis_tab(player_data)
-
-        with tab2:
-            self.render_news_tab(player_data)
-
-        with tab3:
-            self.render_ai_insights_tab(player_data)
-
-        with tab4:
-            self.render_comparison_tab(player_data, all_data)
-
-    def render_vbd_analysis_tab(self, player_data):
-        """Render VBD analysis tab."""
+        # Prominent VBD Analysis at the top
+        st.markdown('<div class="vbd-analysis-container">', unsafe_allow_html=True)
         st.markdown("### 📊 Value Based Drafting Analysis")
 
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
 
         with col1:
             st.markdown("#### 🎯 VBD Metrics")
@@ -811,11 +932,32 @@ class AdvancedFantasyAnalyzer:
             - AI-enhanced for accuracy
             """)
 
-        # Points breakdown if available
-        if 'Points' in player_data and player_data['Points'] > 0:
-            st.markdown("#### 🏈 Fantasy Points Projection")
-            points = player_data.get('Points', 0)
-            st.metric("Projected Fantasy Points", f"{points:.1f}")
+        with col3:
+            # Points breakdown if available
+            if 'Points' in player_data and player_data['Points'] > 0:
+                st.markdown("#### 🏈 Fantasy Points Projection")
+                points = player_data.get('Points', 0)
+                st.metric("Projected Fantasy Points", f"{points:.1f}")
+            
+            # Team and bye week info
+            team = player_data.get('Team', 'Unknown')
+            bye_week = player_data.get('Bye_Week', 0)
+            st.metric("Team", team)
+            st.metric("Bye Week", f"Week {bye_week}" if bye_week > 0 else "TBD")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Tabs for detailed analysis
+        tab1, tab2, tab3 = st.tabs(["📰 News & Intel", "🤖 AI Insights", "📈 Comparison"])
+
+        with tab1:
+            self.render_news_tab(player_data)
+
+        with tab2:
+            self.render_ai_insights_tab(player_data)
+
+        with tab3:
+            self.render_comparison_tab(player_data, all_data)
 
     def render_news_tab(self, player_data):
         """Render news tab."""
@@ -893,243 +1035,589 @@ class AdvancedFantasyAnalyzer:
                 percentile = ((len(position_data) - player_rank + 1) / len(position_data)) * 100
                 st.metric("Percentile Rank", f"{percentile:.0f}%")
 
+class DraftSimulator:
+    """Fantasy draft simulator with AI logic."""
+
+    def __init__(self, players_data: pd.DataFrame):
+        self.players_data = players_data
+        self.drafted_players = []
+        self.user_team = []
+        self.ai_teams = [[] for _ in range(9)]  # 9 AI teams
+        self.current_pick = 1
+        self.snake_draft = True
+
+    def get_pick_order(self, pick_number: int) -> int:
+        """Get the team index for snake draft."""
+        round_num = ((pick_number - 1) // 10) + 1
+        pick_in_round = ((pick_number - 1) % 10) + 1
+
+        if round_num % 2 == 1:  # Odd rounds go 1-10
+            return pick_in_round - 1
+        else:  # Even rounds go 10-1
+            return 9 - (pick_in_round - 1)
+
+    def ai_draft_pick(self, team_index: int, available_players: pd.DataFrame) -> dict:
+        """AI logic for drafting players."""
+        team_roster = self.ai_teams[team_index]
+        
+        # Count positions on roster
+        position_counts = {}
+        for player in team_roster:
+            pos = player.get('Position', 'UNKNOWN')
+            position_counts[pos] = position_counts.get(pos, 0) + 1
+
+        # AI draft strategy based on round and team needs
+        round_num = ((self.current_pick - 1) // 10) + 1
+
+        # Early rounds (1-3): Best available with slight position preference
+        if round_num <= 3:
+            # Prefer RB/WR in early rounds, avoid K/DEF
+            exclude_positions = ['K', 'DEF']
+            if round_num >= 3 and position_counts.get('QB', 0) == 0:
+                # Might grab QB in round 3
+                pass
+            
+            candidates = available_players[~available_players['Position'].isin(exclude_positions)]
+            if len(candidates) == 0:
+                candidates = available_players
+
+        # Mid rounds (4-10): Fill needs
+        elif round_num <= 10:
+            needed_positions = []
+            
+            if position_counts.get('QB', 0) == 0 and round_num >= 6:
+                needed_positions.append('QB')
+            if position_counts.get('TE', 0) == 0 and round_num >= 7:
+                needed_positions.append('TE')
+            
+            # Avoid K/DEF until very late
+            exclude_positions = ['K', 'DEF'] if round_num < 9 else []
+            
+            if needed_positions:
+                candidates = available_players[
+                    (available_players['Position'].isin(needed_positions)) &
+                    (~available_players['Position'].isin(exclude_positions))
+                ]
+                if len(candidates) == 0:
+                    candidates = available_players[~available_players['Position'].isin(exclude_positions)]
+            else:
+                candidates = available_players[~available_players['Position'].isin(exclude_positions)]
+
+        # Late rounds (11+): Fill remaining needs, K/DEF
+        else:
+            needed_positions = []
+            
+            if position_counts.get('K', 0) == 0:
+                needed_positions.append('K')
+            if position_counts.get('DEF', 0) == 0:
+                needed_positions.append('DEF')
+            if position_counts.get('QB', 0) == 0:
+                needed_positions.append('QB')
+            if position_counts.get('TE', 0) == 0:
+                needed_positions.append('TE')
+
+            if needed_positions:
+                candidates = available_players[available_players['Position'].isin(needed_positions)]
+                if len(candidates) == 0:
+                    candidates = available_players
+            else:
+                candidates = available_players
+
+        # Add some randomness to make it realistic (top 3-5 players in filtered list)
+        top_candidates = candidates.head(min(5, len(candidates)))
+        if len(top_candidates) == 0:
+            return None
+
+        # Weight selection towards higher ranked players
+        weights = [1.0 / (i + 1) for i in range(len(top_candidates))]
+        weights = [w / sum(weights) for w in weights]
+
+        selected_idx = np.random.choice(len(top_candidates), p=weights)
+        return top_candidates.iloc[selected_idx].to_dict()
+
+    def simulate_draft(self, user_picks: List[int]) -> List[dict]:
+        """Simulate a full draft."""
+        draft_results = []
+        available_players = self.players_data.copy().sort_values('Overall_Rank')
+
+        for pick_num in range(1, 161):  # 16 rounds, 10 teams
+            team_index = self.get_pick_order(pick_num)
+            
+            if team_index == 0 and pick_num in user_picks:
+                # User's turn - they'll select manually
+                continue
+            else:
+                # AI pick
+                if len(available_players) > 0:
+                    ai_pick = self.ai_draft_pick(team_index - 1 if team_index > 0 else 9, available_players)
+                    if ai_pick:
+                        draft_results.append({
+                            'pick': pick_num,
+                            'round': ((pick_num - 1) // 10) + 1,
+                            'team': f"Team {team_index + 1}" if team_index < 9 else "Your Team",
+                            'player': ai_pick['Player_Name'],
+                            'position': ai_pick['Position'],
+                            'team_name': ai_pick.get('Team', 'Unknown'),
+                            'vbd': ai_pick.get('VBD_Value', 0),
+                            'overall_rank': ai_pick.get('Overall_Rank', 999)
+                        })
+
+                        # Remove drafted player
+                        available_players = available_players[
+                            available_players['Player_Name'] != ai_pick['Player_Name']
+                        ]
+
+                        # Add to team roster
+                        if team_index == 0:
+                            self.user_team.append(ai_pick)
+                        else:
+                            self.ai_teams[team_index - 1].append(ai_pick)
+
+        return draft_results
+
 # Initialize session state
 if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = False
 if 'players_data' not in st.session_state:
     st.session_state.players_data = pd.DataFrame()
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = 'Rankings'
 
-# Enhanced Hero Header
+# Navigation Bar
 st.markdown("""
-<div class="hero-header">
-    <h1 class="hero-title">Fantasy Football 2025</h1>
-    <p class="hero-subtitle">🚀 Advanced VBD Rankings with AI Analytics</p>
+<div class="navbar">
+    <h2 style="margin: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">T3's AI Powered Fantasy Football 2025</h2>
 </div>
 """, unsafe_allow_html=True)
+
+# Navigation buttons
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    nav_col1, nav_col2 = st.columns(2)
+    with nav_col1:
+        if st.button("🏆 Player Rankings", use_container_width=True, type="primary" if st.session_state.current_page == 'Rankings' else "secondary"):
+            st.session_state.current_page = 'Rankings'
+            st.rerun()
+    with nav_col2:
+        if st.button("🎯 Draft Simulator", use_container_width=True, type="primary" if st.session_state.current_page == 'Draft' else "secondary"):
+            st.session_state.current_page = 'Draft'
+            st.rerun()
 
 # Initialize analyzer
 analyzer = AdvancedFantasyAnalyzer()
 
-# Enhanced file upload section
-st.markdown('<div class="filter-section">', unsafe_allow_html=True)
-uploaded_file = st.file_uploader(
-    "📊 Upload Fantasy Football Excel File",
-    type=['xlsx', 'xls'],
-    help="Upload your Excel file with VBD Custom columns for advanced fantasy analysis"
-)
+# Page routing
+if st.session_state.current_page == 'Rankings':
+    # RANKINGS PAGE
+    st.markdown("## 🏆 Player Rankings")
 
-if uploaded_file is not None:
-    if st.button("🚀 Calculate Advanced VBD Rankings", type="primary"):
-        with st.spinner("🔄 Processing VBD data and training AI models..."):
-            try:
-                players_data = analyzer.process_excel_file(uploaded_file)
-
-                if not players_data.empty:
-                    st.session_state.players_data = players_data
-                    st.session_state.data_loaded = True
-                    st.balloons()
-                    st.success(f"✅ Successfully processed {len(players_data)} players with VBD rankings!")
-
-                    # Show AI insights summary
-                    with st.expander("🤖 AI Processing Summary"):
-                        value_picks = len(players_data[players_data.get('Value_Pick', False) == True])
-                        avg_vbd = players_data['VBD_Value'].mean()
-                        top_vbd = players_data['VBD_Value'].max()
-
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Value Picks Identified", value_picks)
-                        with col2:
-                            st.metric("Average VBD Score", f"{avg_vbd:.1f}")
-                        with col3:
-                            st.metric("Highest VBD Score", f"{top_vbd:.1f}")
-                else:
-                    st.error("❌ No player data found with VBD values.")
-
-            except Exception as e:
-                st.error(f"💥 Error processing file: {str(e)}")
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Enhanced main content
-if st.session_state.data_loaded and not st.session_state.players_data.empty:
-    data = st.session_state.players_data
-
-    # Advanced filters section
+    # Enhanced file upload section
     st.markdown('<div class="filter-section">', unsafe_allow_html=True)
-    col1, col2, col3, col4 = st.columns(4)
+    uploaded_file = st.file_uploader(
+        "📊 Upload Fantasy Football Excel File",
+        type=['xlsx', 'xls'],
+        help="Upload your Excel file with VBD Custom columns for advanced fantasy analysis"
+    )
 
-    with col1:
-        positions = ['All Positions'] + sorted(data['Position'].unique().tolist())
-        selected_position = st.selectbox("🎯 Position Filter", positions)
+    if uploaded_file is not None:
+        if st.button("🚀 Calculate Advanced VBD Rankings", type="primary"):
+            with st.spinner("🔄 Processing VBD data and training AI models..."):
+                try:
+                    players_data = analyzer.process_excel_file(uploaded_file)
 
-    with col2:
-        min_vbd = st.slider("📊 Minimum VBD Score", -20.0, 100.0, -20.0, 5.0)
+                    if not players_data.empty:
+                        st.session_state.players_data = players_data
+                        st.session_state.data_loaded = True
+                        st.balloons()
+                        st.success(f"✅ Successfully processed {len(players_data)} players with VBD rankings!")
 
-    with col3:
-        top_n = st.selectbox("📈 Display Count", [25, 50, 100, 200, "All"])
+                        # Show AI insights summary
+                        with st.expander("🤖 AI Processing Summary"):
+                            value_picks = len(players_data[players_data.get('Value_Pick', False) == True])
+                            avg_vbd = players_data['VBD_Value'].mean()
+                            top_vbd = players_data['VBD_Value'].max()
 
-    with col4:
-        search_term = st.text_input("🔍 Search Player", placeholder="Enter player name...")
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Value Picks Identified", value_picks)
+                            with col2:
+                                st.metric("Average VBD Score", f"{avg_vbd:.1f}")
+                            with col3:
+                                st.metric("Highest VBD Score", f"{top_vbd:.1f}")
+                    else:
+                        st.error("❌ No player data found with VBD values.")
+
+                except Exception as e:
+                    st.error(f"💥 Error processing file: {str(e)}")
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Apply filters
-    filtered_data = data.copy()
+    # Enhanced main content
+    if st.session_state.data_loaded and not st.session_state.players_data.empty:
+        data = st.session_state.players_data
 
-    if selected_position != 'All Positions':
-        filtered_data = filtered_data[filtered_data['Position'] == selected_position]
-
-    filtered_data = filtered_data[filtered_data['VBD_Value'] >= min_vbd]
-
-    if search_term:
-        filtered_data = filtered_data[
-            filtered_data['Player_Name'].str.contains(search_term, case=False, na=False)
-        ]
-
-    # Sort by overall rank (VBD-based)
-    filtered_data = filtered_data.sort_values('Overall_Rank', ascending=True)
-
-    if top_n != "All":
-        filtered_data = filtered_data.head(top_n)
-
-    if filtered_data.empty:
-        st.warning("⚠️ No players match the selected filters.")
-    else:
-        # Enhanced summary metrics
-        st.markdown('<div class="advanced-card">', unsafe_allow_html=True)
-        col1, col2, col3, col4, col5 = st.columns(5)
+        # Advanced filters section
+        st.markdown('<div class="filter-section">', unsafe_allow_html=True)
+        col1, col2, col3, col4 = st.columns(4)
 
         with col1:
-            st.metric("Total Players", len(filtered_data))
+            positions = ['All Positions'] + sorted(data['Position'].unique().tolist())
+            selected_position = st.selectbox("🎯 Position Filter", positions)
+
         with col2:
-            avg_vbd = filtered_data['VBD_Value'].mean()
-            st.metric("Avg VBD Score", f"{avg_vbd:.1f}")
+            min_vbd = st.slider("📊 Minimum VBD Score", -20.0, 100.0, -20.0, 5.0)
+
         with col3:
-            top_vbd = filtered_data['VBD_Value'].max()
-            st.metric("Highest VBD", f"{top_vbd:.1f}")
+            top_n = st.selectbox("📈 Display Count", [25, 50, 100, 200, "All"])
+
         with col4:
-            positions_count = filtered_data['Position'].nunique()
-            st.metric("Positions", positions_count)
-        with col5:
-            value_picks = len(filtered_data[filtered_data.get('Value_Pick', False) == True])
-            st.metric("AI Value Picks", value_picks)
+            search_term = st.text_input("🔍 Search Player", placeholder="Enter player name...")
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown("---")
+        # Apply filters
+        filtered_data = data.copy()
 
-        # Enhanced player display with VBD rankings
-        st.markdown("### 🏆 Advanced VBD Rankings")
-        st.markdown("*Based on Value Based Drafting with AI-enhanced insights - Click any player for detailed analysis*")
+        if selected_position != 'All Positions':
+            filtered_data = filtered_data[filtered_data['Position'] == selected_position]
 
-        for idx, (_, player) in enumerate(filtered_data.iterrows()):
-            overall_rank = player['Overall_Rank']
-            rank_class = analyzer.get_rank_badge_class(overall_rank)
+        filtered_data = filtered_data[filtered_data['VBD_Value'] >= min_vbd]
 
-            # Enhanced player row
-            player_container = st.container()
-            with player_container:
-                col_rank, col_player, col_pos, col_vbd, col_round, col_ai, col_news = st.columns([1, 3, 1, 1, 1, 1, 3])
+        if search_term:
+            filtered_data = filtered_data[
+                filtered_data['Player_Name'].str.contains(search_term, case=False, na=False)
+            ]
 
-                with col_rank:
-                    st.markdown(f'<div class="rank-badge {rank_class}">#{overall_rank}</div>', 
-                               unsafe_allow_html=True)
-                    st.markdown(f"<small>Overall</small>", unsafe_allow_html=True)
+        # Sort by overall rank (VBD-based)
+        filtered_data = filtered_data.sort_values('Overall_Rank', ascending=True)
 
-                with col_player:
-                    if st.button(f"🏈 {player['Player_Name']}", key=f"player_{idx}", use_container_width=True):
-                        st.session_state.selected_player = player
+        if top_n != "All":
+            filtered_data = filtered_data.head(top_n)
 
-                with col_pos:
-                    position = player.get('Position', 'UNKNOWN')
-                    st.markdown(f'<span class="position-badge pos-{position.lower()}">{position}</span>', 
-                               unsafe_allow_html=True)
-                    pos_rank = player.get('Position_Rank', 'N/A')
-                    st.markdown(f"<small>#{pos_rank}</small>", unsafe_allow_html=True)
+        if filtered_data.empty:
+            st.warning("⚠️ No players match the selected filters.")
+        else:
+            # Enhanced summary metrics
+            st.markdown('<div class="advanced-card">', unsafe_allow_html=True)
+            col1, col2, col3, col4, col5 = st.columns(5)
 
-                with col_vbd:
-                    vbd = player.get('VBD_Value', 0)
-                    vbd_class = analyzer.get_vbd_class(vbd)
-                    st.markdown(f'<div class="vbd-badge {vbd_class}">{vbd:.1f}</div>', 
-                               unsafe_allow_html=True)
-                    st.markdown(f"<small>VBD</small>", unsafe_allow_html=True)
+            with col1:
+                st.metric("Total Players", len(filtered_data))
+            with col2:
+                avg_vbd = filtered_data['VBD_Value'].mean()
+                st.metric("Avg VBD Score", f"{avg_vbd:.1f}")
+            with col3:
+                top_vbd = filtered_data['VBD_Value'].max()
+                st.metric("Highest VBD", f"{top_vbd:.1f}")
+            with col4:
+                positions_count = filtered_data['Position'].nunique()
+                st.metric("Positions", positions_count)
+            with col5:
+                value_picks = len(filtered_data[filtered_data.get('Value_Pick', False) == True])
+                st.metric("AI Value Picks", value_picks)
 
-                with col_round:
-                    draft_round = player.get('Draft_Round', 'TBD')
-                    if 'Round 1' in draft_round or 'Round 2' in draft_round:
-                        round_class = 'round-1-2'
-                    elif 'Round 3' in draft_round or 'Round 4' in draft_round or 'Round 5' in draft_round:
-                        round_class = 'round-3-5'
-                    elif 'Rounds 6' in draft_round or 'Round 8' in draft_round or 'Round 9' in draft_round or 'Round 10' in draft_round:
-                        round_class = 'round-6-10'
-                    elif 'Round 11' in draft_round or 'Round 12' in draft_round or 'Round 13' in draft_round or 'Round 14' in draft_round or 'Round 15' in draft_round:
-                        round_class = 'round-11-15'
-                    else:
-                        round_class = 'round-waiver'
+            st.markdown('</div>', unsafe_allow_html=True)
 
-                    st.markdown(f'<div class="draft-round-badge {round_class}">{draft_round}</div>', 
-                               unsafe_allow_html=True)
-
-                with col_ai:
-                    value_pick = player.get('Value_Pick', False)
-                    if value_pick:
-                        st.markdown('💎 <span style="color: #00ff87; font-weight: bold;">VALUE</span>', unsafe_allow_html=True)
-                    else:
-                        st.markdown('<span style="color: #666;">---</span>', unsafe_allow_html=True)
-
-                with col_news:
-                    news = str(player.get('News', 'No recent news'))
-                    if len(news) > 100:
-                        news = news[:100] + "..."
-                    st.markdown(f"<div style='font-size: 0.85rem; color: rgba(255,255,255,0.8);'>{news}</div>", unsafe_allow_html=True)
-
-        # Display selected player details
-        if 'selected_player' in st.session_state:
             st.markdown("---")
-            analyzer.render_player_modal(st.session_state.selected_player, data)
 
-else:
-    # Enhanced welcome section
-    st.markdown("""
-    <div class="advanced-card" style="text-align: center; padding: 3rem;">
-        <h3 style="color: #667eea;">🚀 Advanced VBD Fantasy Rankings</h3>
-        <p style="font-size: 1.1rem; margin: 1.5rem 0;">Upload your Excel file with VBD Custom columns for AI-powered analysis!</p>
+            # Enhanced player display with VBD rankings
+            st.markdown("### 🏆 Advanced VBD Rankings")
+            st.markdown("*Based on Value Based Drafting with AI-enhanced insights - Click any player for detailed analysis*")
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 2rem 0;">
-            <div class="metric-card">
-                <h4>📊 VBD Analysis</h4>
-                <p>Uses Value Based Drafting scores from your Excel sheets</p>
+            for idx, (_, player) in enumerate(filtered_data.iterrows()):
+                overall_rank = player['Overall_Rank']
+                rank_class = analyzer.get_rank_badge_class(overall_rank)
+
+                # Enhanced player row
+                player_container = st.container()
+                with player_container:
+                    col_rank, col_player, col_team, col_pos, col_vbd, col_round, col_ai, col_news = st.columns([1, 2, 1, 1, 1, 1, 1, 3])
+
+                    with col_rank:
+                        st.markdown(f'<div class="rank-badge {rank_class}">#{overall_rank}</div>', 
+                                   unsafe_allow_html=True)
+                        st.markdown(f"<small>Overall</small>", unsafe_allow_html=True)
+
+                    with col_player:
+                        first_name = player.get('First_Name', '').strip()
+                        last_name = player.get('Last_Name', '').strip()
+                        display_name = f"{first_name} {last_name}".strip() or player.get('Player_Name', 'Unknown')
+                        
+                        if st.button(f"🏈 {display_name}", key=f"player_{idx}", use_container_width=True):
+                            st.session_state.selected_player = player
+
+                    with col_team:
+                        team = player.get('Team', 'UNK')
+                        bye_week = player.get('Bye_Week', 0)
+                        st.markdown(f'<div class="team-badge">{team}</div>', unsafe_allow_html=True)
+                        if bye_week > 0:
+                            st.markdown(f'<div class="bye-week">Bye: {bye_week}</div>', unsafe_allow_html=True)
+
+                    with col_pos:
+                        position = player.get('Position', 'UNKNOWN')
+                        st.markdown(f'<span class="position-badge pos-{position.lower()}">{position}</span>', 
+                                   unsafe_allow_html=True)
+                        pos_rank = player.get('Position_Rank', 'N/A')
+                        st.markdown(f"<small>#{pos_rank}</small>", unsafe_allow_html=True)
+
+                    with col_vbd:
+                        vbd = player.get('VBD_Value', 0)
+                        vbd_class = analyzer.get_vbd_class(vbd)
+                        st.markdown(f'<div class="vbd-badge {vbd_class}">{vbd:.1f}</div>', 
+                                   unsafe_allow_html=True)
+                        st.markdown(f"<small>VBD</small>", unsafe_allow_html=True)
+
+                    with col_round:
+                        draft_round = player.get('Draft_Round', 'TBD')
+                        if 'Round 1' in draft_round or 'Round 2' in draft_round:
+                            round_class = 'round-1-2'
+                        elif 'Round 3' in draft_round or 'Round 4' in draft_round or 'Round 5' in draft_round:
+                            round_class = 'round-3-5'
+                        elif 'Rounds 6' in draft_round or 'Round 8' in draft_round or 'Round 9' in draft_round or 'Round 10' in draft_round:
+                            round_class = 'round-6-10'
+                        elif 'Round 11' in draft_round or 'Round 12' in draft_round or 'Round 13' in draft_round or 'Round 14' in draft_round or 'Round 15' in draft_round:
+                            round_class = 'round-11-15'
+                        else:
+                            round_class = 'round-waiver'
+
+                        st.markdown(f'<div class="draft-round-badge {round_class}">{draft_round}</div>', 
+                                   unsafe_allow_html=True)
+
+                    with col_ai:
+                        value_pick = player.get('Value_Pick', False)
+                        if value_pick:
+                            st.markdown('💎 <span style="color: #00ff87; font-weight: bold;">VALUE</span>', unsafe_allow_html=True)
+                        else:
+                            st.markdown('<span style="color: #666;">---</span>', unsafe_allow_html=True)
+
+                    with col_news:
+                        news = str(player.get('News', 'No recent news'))
+                        if len(news) > 100:
+                            news = news[:100] + "..."
+                        st.markdown(f"<div style='font-size: 0.85rem; color: rgba(255,255,255,0.8);'>{news}</div>", unsafe_allow_html=True)
+
+            # Display selected player details
+            if 'selected_player' in st.session_state:
+                st.markdown("---")
+                analyzer.render_player_modal(st.session_state.selected_player, data)
+
+    else:
+        # Enhanced welcome section
+        st.markdown("""
+        <div class="advanced-card" style="text-align: center; padding: 3rem;">
+            <h3 style="color: #667eea;">🚀 Advanced VBD Fantasy Rankings</h3>
+            <p style="font-size: 1.1rem; margin: 1.5rem 0;">Upload your Excel file with VBD Custom columns for AI-powered analysis!</p>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 2rem 0;">
+                <div class="metric-card">
+                    <h4>📊 VBD Analysis</h4>
+                    <p>Uses Value Based Drafting scores from your Excel sheets</p>
+                </div>
+                <div class="metric-card">
+                    <h4>🤖 AI Insights</h4>
+                    <p>Machine learning identifies value picks and draft strategies</p>
+                </div>
+                <div class="metric-card">
+                    <h4>🎯 Smart Rankings</h4>
+                    <p>Position scarcity and draft round logic optimize rankings</p>
+                </div>
             </div>
-            <div class="metric-card">
-                <h4>🤖 AI Insights</h4>
-                <p>Machine learning identifies value picks and draft strategies</p>
+
+            <div style="text-align: left; max-width: 600px; margin: 2rem auto;">
+                <h4>📋 Required VBD Columns:</h4>
+                <ul style="font-size: 0.9rem;">
+                    <li><strong>QB, RB, WR:</strong> Column X (VBD Custom)</li>
+                    <li><strong>TE:</strong> Column S (VBD Custom)</li>
+                    <li><strong>K, DEF:</strong> Column L (0 = best, higher = worse)</li>
+                    <li><strong>Names:</strong> Column A (First), Column B (Last)</li>
+                    <li><strong>Team:</strong> Column C</li>
+                    <li><strong>News:</strong> Column Y (automatic detection)</li>
+                </ul>
             </div>
-            <div class="metric-card">
-                <h4>🎯 Smart Rankings</h4>
-                <p>Position scarcity and draft round logic optimize rankings</p>
-            </div>
+
+            <p><strong>Features:</strong> Advanced AI rankings, value pick identification, draft round optimization</p>
         </div>
+        """, unsafe_allow_html=True)
 
-        <div style="text-align: left; max-width: 600px; margin: 2rem auto;">
-            <h4>📋 Required VBD Columns:</h4>
-            <ul style="font-size: 0.9rem;">
-                <li><strong>QB, RB, WR:</strong> Column X (VBD Custom)</li>
-                <li><strong>TE:</strong> Column S (VBD Custom)</li>
-                <li><strong>K, DEF:</strong> Column L (0 = best, higher = worse)</li>
-                <li><strong>News:</strong> Column Y (automatic detection)</li>
-            </ul>
+elif st.session_state.current_page == 'Draft':
+    # DRAFT SIMULATOR PAGE
+    st.markdown("## 🎯 Fantasy Draft Simulator")
+
+    if not st.session_state.data_loaded or st.session_state.players_data.empty:
+        st.warning("⚠️ Please upload and process player data on the Rankings page first.")
+        st.markdown("""
+        <div class="advanced-card" style="text-align: center; padding: 2rem;">
+            <h3>🎯 AI-Powered Draft Simulation</h3>
+            <p>Experience realistic fantasy football drafts with 9 AI opponents using advanced drafting logic.</p>
+            <p><strong>To get started:</strong> Upload your Excel file on the Rankings page first.</p>
         </div>
+        """, unsafe_allow_html=True)
+    else:
+        data = st.session_state.players_data
+        
+        st.markdown('<div class="draft-container">', unsafe_allow_html=True)
+        
+        # Draft settings
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown("### 🎮 Draft Configuration")
+            
+            draft_col1, draft_col2, draft_col3 = st.columns(3)
+            
+            with draft_col1:
+                num_rounds = st.selectbox("Draft Rounds", [10, 12, 15, 16], index=3)
+            
+            with draft_col2:
+                draft_position = st.selectbox("Your Draft Position", list(range(1, 11)), index=4)
+            
+            with draft_col3:
+                league_type = st.selectbox("League Type", ["Standard", "PPR", "Half-PPR"], index=1)
 
-        <p><strong>Features:</strong> Advanced AI rankings, value pick identification, draft round optimization</p>
-    </div>
-    """, unsafe_allow_html=True)
+        with col2:
+            st.markdown("### 🤖 AI Draft Logic")
+            st.markdown("""
+            **Smart AI Strategy:**
+            - Early rounds: RB/WR priority
+            - Mid rounds: Fill positional needs
+            - Late rounds: Kickers & Defense
+            - Considers team composition
+            - Realistic draft behavior
+            """)
+
+        if st.button("🚀 Start Draft Simulation", type="primary", use_container_width=True):
+            simulator = DraftSimulator(data)
+            
+            with st.spinner("🎯 Simulating AI draft with realistic logic..."):
+                # Calculate user's picks in snake draft
+                user_picks = []
+                for round_num in range(1, num_rounds + 1):
+                    if round_num % 2 == 1:  # Odd rounds
+                        pick = (round_num - 1) * 10 + draft_position
+                    else:  # Even rounds (snake)
+                        pick = (round_num - 1) * 10 + (11 - draft_position)
+                    user_picks.append(pick)
+
+                # Simulate draft
+                draft_results = simulator.simulate_draft(user_picks)
+
+                st.success(f"✅ Draft simulation complete! {len(draft_results)} picks made.")
+
+                # Display draft results
+                st.markdown("### 🏈 Draft Results")
+                
+                # Create tabs for different views
+                tab1, tab2, tab3 = st.tabs(["📋 Full Draft Board", "👥 Your Team", "📊 Draft Analysis"])
+
+                with tab1:
+                    st.markdown("#### 🎯 Complete Draft Board")
+                    
+                    # Group by rounds
+                    draft_df = pd.DataFrame(draft_results)
+                    
+                    for round_num in range(1, min(num_rounds + 1, draft_df['round'].max() + 1)):
+                        round_picks = draft_df[draft_df['round'] == round_num]
+                        
+                        if not round_picks.empty:
+                            st.markdown(f"**Round {round_num}**")
+                            
+                            for _, pick in round_picks.iterrows():
+                                pick_num = pick['pick']
+                                team_name = pick['team']
+                                player_name = pick['player']
+                                position = pick['position']
+                                team_abbr = pick['team_name']
+                                vbd_score = pick['vbd']
+                                
+                                is_user_pick = team_name == "Your Team"
+                                team_color = "#667eea" if is_user_pick else "#666"
+                                
+                                st.markdown(f"""
+                                <div class="draft-pick" style="border-left: 4px solid {team_color};">
+                                    <div class="pick-number">#{pick_num}</div>
+                                    <div style="flex-grow: 1;">
+                                        <div style="font-weight: 600; font-size: 1.1rem;">{player_name}</div>
+                                        <div style="color: rgba(255,255,255,0.8); font-size: 0.9rem;">
+                                            <span class="position-badge pos-{position.lower()}">{position}</span>
+                                            <span class="team-badge">{team_abbr}</span>
+                                            <span style="margin-left: 0.5rem;">VBD: {vbd_score:.1f}</span>
+                                        </div>
+                                    </div>
+                                    <div style="text-align: right; color: rgba(255,255,255,0.7);">
+                                        {team_name}
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+
+                with tab2:
+                    st.markdown("#### 🏆 Your Drafted Team")
+                    
+                    user_picks_df = draft_df[draft_df['team'] == 'Your Team']
+                    
+                    if not user_picks_df.empty:
+                        for _, pick in user_picks_df.iterrows():
+                            st.markdown(f"""
+                            <div class="draft-pick" style="border-left: 4px solid #667eea;">
+                                <div class="pick-number">R{pick['round']}</div>
+                                <div style="flex-grow: 1;">
+                                    <div style="font-weight: 600; font-size: 1.1rem;">{pick['player']}</div>
+                                    <div style="color: rgba(255,255,255,0.8); font-size: 0.9rem;">
+                                        <span class="position-badge pos-{pick['position'].lower()}">{pick['position']}</span>
+                                        <span class="team-badge">{pick['team_name']}</span>
+                                        <span style="margin-left: 0.5rem;">VBD: {pick['vbd']:.1f}</span>
+                                        <span style="margin-left: 0.5rem;">Overall Rank: #{pick['overall_rank']}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.info("No picks made yet. In a real draft, you would select players during your turns.")
+
+                with tab3:
+                    st.markdown("#### 📊 Draft Analytics")
+                    
+                    # Position distribution
+                    if not draft_df.empty:
+                        col_a, col_b = st.columns(2)
+                        
+                        with col_a:
+                            pos_counts = draft_df['position'].value_counts()
+                            fig_pos = px.pie(
+                                values=pos_counts.values,
+                                names=pos_counts.index,
+                                title="Positions Drafted"
+                            )
+                            fig_pos.update_layout(
+                                plot_bgcolor='rgba(0,0,0,0)',
+                                paper_bgcolor='rgba(0,0,0,0)',
+                                font=dict(color='white')
+                            )
+                            st.plotly_chart(fig_pos, use_container_width=True)
+                        
+                        with col_b:
+                            round_avg_vbd = draft_df.groupby('round')['vbd'].mean()
+                            fig_vbd = px.line(
+                                x=round_avg_vbd.index,
+                                y=round_avg_vbd.values,
+                                title="Average VBD by Round",
+                                markers=True
+                            )
+                            fig_vbd.update_layout(
+                                plot_bgcolor='rgba(0,0,0,0)',
+                                paper_bgcolor='rgba(0,0,0,0)',
+                                font=dict(color='white'),
+                                xaxis_title="Round",
+                                yaxis_title="Average VBD"
+                            )
+                            st.plotly_chart(fig_vbd, use_container_width=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # Enhanced footer
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: rgba(255,255,255,0.6); padding: 2rem;'>
-    <p style="font-size: 1.1rem; font-weight: 600;">Fantasy Football 2025 | Advanced VBD Analytics with AI</p>
-    <p>Value Based Drafting • Machine Learning Insights • Position Scarcity Logic</p>
+    <p style="font-size: 1.1rem; font-weight: 600;">T3's AI Powered Fantasy Football 2025 | Advanced VBD Analytics</p>
+    <p>Value Based Drafting • Machine Learning Insights • Realistic Draft Simulation</p>
 </div>
 """, unsafe_allow_html=True)
