@@ -3202,77 +3202,179 @@ if st.session_state.current_page == 'Rankings':
             st.markdown("### 🏆 Advanced VBD Rankings")
             st.markdown("*Based on Value Based Drafting with AI-enhanced insights - Click any player for detailed analysis*")
 
-            for idx, (_, player) in enumerate(filtered_data.iterrows()):
-                overall_rank = player['Overall_Rank']
-                rank_class = analyzer.get_rank_badge_class(overall_rank)
+            # Display top 25 players first
+            top_25_players = filtered_data.head(25)
+            remaining_players = filtered_data.iloc[25:] if len(filtered_data) > 25 else pd.DataFrame()
 
-                # Enhanced player row
-                player_container = st.container()
-                with player_container:
-                    col_rank, col_player, col_team, col_pos, col_vbd, col_round, col_ai, col_news = st.columns([1, 2, 1, 1, 1, 1, 1, 3])
+            # Top 25 players (displayed normally)
+            if not top_25_players.empty:
+                st.markdown("#### 🥇 Top 25 Players")
+                for idx, (_, player) in enumerate(top_25_players.iterrows()):
+                    overall_rank = player['Overall_Rank']
+                    rank_class = analyzer.get_rank_badge_class(overall_rank)
 
-                    with col_rank:
-                        st.markdown(f'<div class="rank-badge {rank_class}">#{overall_rank}</div>', 
-                                   unsafe_allow_html=True)
-                        st.markdown(f"<small>Overall</small>", unsafe_allow_html=True)
+                    # Enhanced player row
+                    player_container = st.container()
+                    with player_container:
+                        col_rank, col_player, col_team, col_pos, col_vbd, col_round, col_ai, col_news = st.columns([1, 2, 1, 1, 1, 1, 1, 3])
 
-                    with col_player:
-                        first_name = player.get('First_Name', '').strip()
-                        last_name = player.get('Last_Name', '').strip()
-                        display_name = f"{first_name} {last_name}".strip() or player.get('Player_Name', 'Unknown')
-                        
-                        if st.button(f"🏈 {display_name}", key=f"player_{idx}", use_container_width=True):
-                            st.session_state.selected_player = player
+                        with col_rank:
+                            st.markdown(f'<div class="rank-badge {rank_class}">#{overall_rank}</div>', 
+                                       unsafe_allow_html=True)
+                            st.markdown(f"<small>Overall</small>", unsafe_allow_html=True)
 
-                    with col_team:
-                        team = player.get('Team', 'UNK')
-                        bye_week = player.get('Bye_Week', 0)
-                        st.markdown(f'<div class="team-badge">{team}</div>', unsafe_allow_html=True)
-                        if bye_week > 0:
-                            st.markdown(f'<div class="bye-week">Bye: {bye_week}</div>', unsafe_allow_html=True)
+                        with col_player:
+                            first_name = player.get('First_Name', '').strip()
+                            last_name = player.get('Last_Name', '').strip()
+                            display_name = f"{first_name} {last_name}".strip() or player.get('Player_Name', 'Unknown')
+                            
+                            if st.button(f"🏈 {display_name}", key=f"top_player_{idx}", use_container_width=True):
+                                st.session_state.selected_player = player
 
-                    with col_pos:
-                        position = player.get('Position', 'UNKNOWN')
-                        st.markdown(f'<span class="position-badge pos-{position.lower()}">{position}</span>', 
-                                   unsafe_allow_html=True)
-                        pos_rank = player.get('Position_Rank', 'N/A')
-                        st.markdown(f"<small>#{pos_rank}</small>", unsafe_allow_html=True)
+                        with col_team:
+                            team = player.get('Team', 'UNK')
+                            bye_week = player.get('Bye_Week', 0)
+                            st.markdown(f'<div class="team-badge">{team}</div>', unsafe_allow_html=True)
+                            if bye_week > 0:
+                                st.markdown(f'<div class="bye-week">Bye: {bye_week}</div>', unsafe_allow_html=True)
 
-                    with col_vbd:
-                        vbd = player.get('VBD_Value', 0)
-                        vbd_class = analyzer.get_vbd_class(vbd)
-                        st.markdown(f'<div class="vbd-badge {vbd_class}">{vbd:.1f}</div>', 
-                                   unsafe_allow_html=True)
-                        st.markdown(f"<small>VBD</small>", unsafe_allow_html=True)
+                        with col_pos:
+                            position = player.get('Position', 'UNKNOWN')
+                            st.markdown(f'<span class="position-badge pos-{position.lower()}">{position}</span>', 
+                                       unsafe_allow_html=True)
+                            pos_rank = player.get('Position_Rank', 'N/A')
+                            st.markdown(f"<small>#{pos_rank}</small>", unsafe_allow_html=True)
 
-                    with col_round:
-                        draft_round = player.get('Draft_Round', 'TBD')
-                        if 'Round 1' in draft_round or 'Round 2' in draft_round:
-                            round_class = 'round-1-2'
-                        elif 'Round 3' in draft_round or 'Round 4' in draft_round or 'Round 5' in draft_round:
-                            round_class = 'round-3-5'
-                        elif 'Rounds 6' in draft_round or 'Round 8' in draft_round or 'Round 9' in draft_round or 'Round 10' in draft_round:
-                            round_class = 'round-6-10'
-                        elif 'Round 11' in draft_round or 'Round 12' in draft_round or 'Round 13' in draft_round or 'Round 14' in draft_round or 'Round 15' in draft_round:
-                            round_class = 'round-11-15'
-                        else:
-                            round_class = 'round-waiver'
+                        with col_vbd:
+                            vbd = player.get('VBD_Value', 0)
+                            vbd_class = analyzer.get_vbd_class(vbd)
+                            st.markdown(f'<div class="vbd-badge {vbd_class}">{vbd:.1f}</div>', 
+                                       unsafe_allow_html=True)
+                            st.markdown(f"<small>VBD</small>", unsafe_allow_html=True)
 
-                        st.markdown(f'<div class="draft-round-badge {round_class}">{draft_round}</div>', 
-                                   unsafe_allow_html=True)
+                        with col_round:
+                            draft_round = player.get('Draft_Round', 'TBD')
+                            if 'Round 1' in draft_round or 'Round 2' in draft_round:
+                                round_class = 'round-1-2'
+                            elif 'Round 3' in draft_round or 'Round 4' in draft_round or 'Round 5' in draft_round:
+                                round_class = 'round-3-5'
+                            elif 'Rounds 6' in draft_round or 'Round 8' in draft_round or 'Round 9' in draft_round or 'Round 10' in draft_round:
+                                round_class = 'round-6-10'
+                            elif 'Round 11' in draft_round or 'Round 12' in draft_round or 'Round 13' in draft_round or 'Round 14' in draft_round or 'Round 15' in draft_round:
+                                round_class = 'round-11-15'
+                            else:
+                                round_class = 'round-waiver'
 
-                    with col_ai:
-                        value_pick = player.get('Value_Pick', False)
-                        if value_pick:
-                            st.markdown('💎 <span style="color: #00ff87; font-weight: bold;">VALUE</span>', unsafe_allow_html=True)
-                        else:
-                            st.markdown('<span style="color: #666;">---</span>', unsafe_allow_html=True)
+                            st.markdown(f'<div class="draft-round-badge {round_class}">{draft_round}</div>', 
+                                       unsafe_allow_html=True)
 
-                    with col_news:
-                        news = str(player.get('News', 'No recent news'))
-                        if len(news) > 100:
-                            news = news[:100] + "..."
-                        st.markdown(f"<div style='font-size: 0.85rem; color: rgba(255,255,255,0.8);'>{news}</div>", unsafe_allow_html=True)
+                        with col_ai:
+                            value_pick = player.get('Value_Pick', False)
+                            if value_pick:
+                                st.markdown('💎 <span style="color: #00ff87; font-weight: bold;">VALUE</span>', unsafe_allow_html=True)
+                            else:
+                                st.markdown('<span style="color: #666;">---</span>', unsafe_allow_html=True)
+
+                        with col_news:
+                            news = str(player.get('News', 'No recent news'))
+                            if len(news) > 100:
+                                news = news[:100] + "..."
+                            st.markdown(f"<div style='font-size: 0.85rem; color: rgba(255,255,255,0.8);'>{news}</div>", unsafe_allow_html=True)
+
+            # Remaining players in scrollable container
+            if not remaining_players.empty:
+                st.markdown("---")
+                st.markdown(f"#### 📋 Remaining Players (Ranks 26-{len(filtered_data)})")
+                
+                # Scrollable container for remaining players
+                st.markdown("""
+                <div style="
+                    background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+                    backdrop-filter: blur(15px);
+                    border-radius: 16px;
+                    padding: 1.5rem;
+                    margin: 1rem 0;
+                    border: 2px solid rgba(255,255,255,0.2);
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+                    max-height: 600px;
+                    overflow-y: auto;
+                    overflow-x: hidden;
+                ">
+                """, unsafe_allow_html=True)
+                
+                for idx, (_, player) in enumerate(remaining_players.iterrows()):
+                    overall_rank = player['Overall_Rank']
+                    rank_class = analyzer.get_rank_badge_class(overall_rank)
+
+                    # Enhanced player row
+                    player_container = st.container()
+                    with player_container:
+                        col_rank, col_player, col_team, col_pos, col_vbd, col_round, col_ai, col_news = st.columns([1, 2, 1, 1, 1, 1, 1, 3])
+
+                        with col_rank:
+                            st.markdown(f'<div class="rank-badge {rank_class}">#{overall_rank}</div>', 
+                                       unsafe_allow_html=True)
+                            st.markdown(f"<small>Overall</small>", unsafe_allow_html=True)
+
+                        with col_player:
+                            first_name = player.get('First_Name', '').strip()
+                            last_name = player.get('Last_Name', '').strip()
+                            display_name = f"{first_name} {last_name}".strip() or player.get('Player_Name', 'Unknown')
+                            
+                            if st.button(f"🏈 {display_name}", key=f"scroll_player_{idx + 25}", use_container_width=True):
+                                st.session_state.selected_player = player
+
+                        with col_team:
+                            team = player.get('Team', 'UNK')
+                            bye_week = player.get('Bye_Week', 0)
+                            st.markdown(f'<div class="team-badge">{team}</div>', unsafe_allow_html=True)
+                            if bye_week > 0:
+                                st.markdown(f'<div class="bye-week">Bye: {bye_week}</div>', unsafe_allow_html=True)
+
+                        with col_pos:
+                            position = player.get('Position', 'UNKNOWN')
+                            st.markdown(f'<span class="position-badge pos-{position.lower()}">{position}</span>', 
+                                       unsafe_allow_html=True)
+                            pos_rank = player.get('Position_Rank', 'N/A')
+                            st.markdown(f"<small>#{pos_rank}</small>", unsafe_allow_html=True)
+
+                        with col_vbd:
+                            vbd = player.get('VBD_Value', 0)
+                            vbd_class = analyzer.get_vbd_class(vbd)
+                            st.markdown(f'<div class="vbd-badge {vbd_class}">{vbd:.1f}</div>', 
+                                       unsafe_allow_html=True)
+                            st.markdown(f"<small>VBD</small>", unsafe_allow_html=True)
+
+                        with col_round:
+                            draft_round = player.get('Draft_Round', 'TBD')
+                            if 'Round 1' in draft_round or 'Round 2' in draft_round:
+                                round_class = 'round-1-2'
+                            elif 'Round 3' in draft_round or 'Round 4' in draft_round or 'Round 5' in draft_round:
+                                round_class = 'round-3-5'
+                            elif 'Rounds 6' in draft_round or 'Round 8' in draft_round or 'Round 9' in draft_round or 'Round 10' in draft_round:
+                                round_class = 'round-6-10'
+                            elif 'Round 11' in draft_round or 'Round 12' in draft_round or 'Round 13' in draft_round or 'Round 14' in draft_round or 'Round 15' in draft_round:
+                                round_class = 'round-11-15'
+                            else:
+                                round_class = 'round-waiver'
+
+                            st.markdown(f'<div class="draft-round-badge {round_class}">{draft_round}</div>', 
+                                       unsafe_allow_html=True)
+
+                        with col_ai:
+                            value_pick = player.get('Value_Pick', False)
+                            if value_pick:
+                                st.markdown('💎 <span style="color: #00ff87; font-weight: bold;">VALUE</span>', unsafe_allow_html=True)
+                            else:
+                                st.markdown('<span style="color: #666;">---</span>', unsafe_allow_html=True)
+
+                        with col_news:
+                            news = str(player.get('News', 'No recent news'))
+                            if len(news) > 100:
+                                news = news[:100] + "..."
+                            st.markdown(f"<div style='font-size: 0.85rem; color: rgba(255,255,255,0.8);'>{news}</div>", unsafe_allow_html=True)
+                
+                st.markdown("</div>", unsafe_allow_html=True)
 
             # Display selected player details
             if 'selected_player' in st.session_state:
