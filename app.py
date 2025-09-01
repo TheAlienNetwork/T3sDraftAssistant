@@ -11,6 +11,7 @@ import base64
 import re
 from typing import Dict, List, Optional
 import random
+import time
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
@@ -1459,6 +1460,17 @@ class DraftSimulator:
             elapsed = (datetime.now() - st.session_state.pick_timer_start).total_seconds()
             return max(0, 60 - elapsed)
         return 60
+    
+    def start_pick_timer(self):
+        """Start the pick timer for the current turn."""
+        st.session_state.pick_timer_start = datetime.now()
+    
+    def is_timer_expired(self, time_limit=60):
+        """Check if the pick timer has expired."""
+        if not st.session_state.pick_timer_start:
+            return False
+        elapsed = (datetime.now() - st.session_state.pick_timer_start).total_seconds()
+        return elapsed >= time_limit
 
     def render_user_draft_interface(self, current_pick, remaining_time):
         """Render enhanced user draft interface with AI suggestions and full player board."""
@@ -1586,8 +1598,8 @@ class DraftSimulator:
                 filtered_players['Player_Name'].str.contains(search_term, case=False, na=False)
             ]
         
-        # Sort by overall rank and limit results
-        filtered_players = filtered_players.sort_values('Overall_Rank').head(30)
+        # Sort by overall rank and limit results for performance
+        filtered_players = filtered_players.sort_values('Overall_Rank').head(20)  # Reduced from 30 to 20 for better performance
         
         # Player table container
         with st.container():
@@ -1632,16 +1644,25 @@ class DraftSimulator:
             st.markdown(f"**#{int(player['Overall_Rank'])}**")
             
         with row_cols[1]:
-            st.markdown(f"**{player['Player_Name']}**")
+            # Safe player name display
+            player_name = str(player.get('Player_Name', 'Unknown Player'))
+            st.markdown(f"**{player_name}**")
             
         with row_cols[2]:
             st.markdown(f"<span style='background: {pos_color}; color: white; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem;'>{player['Position']}</span>", unsafe_allow_html=True)
             
         with row_cols[3]:
-            st.markdown(f"{player.get('Team', 'UNK')}")
+            # Safe team display
+            team_name = str(player.get('Team', 'UNK'))
+            st.markdown(f"{team_name}")
             
         with row_cols[4]:
-            vbd_val = player.get('VBD_Value', 0)
+            # Safe VBD value display with proper type conversion
+            try:
+                vbd_val = float(player.get('VBD_Value', 0))
+            except (ValueError, TypeError):
+                vbd_val = 0.0
+                
             if vbd_val >= 10:
                 vbd_color = '#00ff87'  # Elite
             elif vbd_val >= 5:
@@ -1654,14 +1675,17 @@ class DraftSimulator:
             
         with row_cols[5]:
             if is_user_turn:
-                if st.button(f"📝 DRAFT", key=f"draft_player_{idx}", type="primary", use_container_width=True):
+                # Use unique key based on player name to prevent issues
+                player_name = str(player.get('Player_Name', f'player_{idx}'))
+                button_key = f"draft_{player_name}_{idx}"
+                if st.button(f"📝 DRAFT", key=button_key, type="primary", use_container_width=True):
                     self.make_user_pick(player)
                     st.rerun()
             else:
                 st.markdown("<div style='text-align: center; padding: 0.5rem; background: rgba(255,255,255,0.1); border-radius: 6px; font-size: 0.8rem;'>Available</div>", unsafe_allow_html=True)
         
-        # Add subtle divider
-        if idx < 29:  # Don't add divider after last row
+        # Add subtle divider (optimized)
+        if idx < 19:  # Don't add divider after last row (updated from 29 to 19)
             st.markdown("<hr style='margin: 0.5rem 0; border: 1px solid rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
 
     def render_my_team(self):
@@ -1850,97 +1874,125 @@ class DraftSimulator:
 
     def handle_user_pick(self):
         """Handle when it's the user's turn to pick."""
+        # Initialize timer if not started
+        if not st.session_state.pick_timer_start:
+            self.start_pick_timer()
+            
         # Check if timer expired
-        if st.session_state.pick_timer_start:
-            elapsed = (datetime.now() - st.session_state.pick_timer_start).total_seconds()
-            if elapsed >= 60:
-                # Auto-pick best available player
-                if len(st.session_state.available_players) > 0:
-                    best_player = st.session_state.available_players.iloc[0]
-                    st.warning(f"⏰ Time expired! Auto-drafted {best_player['Player_Name']}")
-                    self.make_user_pick(best_player)
-                    st.rerun()
+        if self.is_timer_expired(60):
+            # Auto-pick best available player
+            if len(st.session_state.available_players) > 0:
+                best_player = st.session_state.available_players.iloc[0]
+                st.error(f"⏰ Time expired! Auto-drafted {best_player['Player_Name']}")
+                self.make_user_pick(best_player)
+                st.rerun()
+        else:
+            # Show remaining time countdown every few seconds
+            remaining = self.get_remaining_time()
+            if remaining <= 10 and int(remaining) % 2 == 0:  # Update every 2 seconds when time is low
+                st.rerun()
 
     def make_user_pick(self, player_row):
-        """Process user's player selection."""
-        # Add pick to results
+        """Process user's player selection with optimized data handling."""
+        # Ensure player_row is a Series or dict
+        if hasattr(player_row, 'to_dict'):
+            player_dict = player_row.to_dict()
+        else:
+            player_dict = player_row
+        
+        # Add pick to results with safe data access
         pick_info = {
             'pick': st.session_state.current_pick_number,
             'round': ((st.session_state.current_pick_number - 1) // 10) + 1,
             'team': 'Your Team',
-            'player': player_row['Player_Name'],
-            'position': player_row['Position'],
-            'team_name': player_row.get('Team', 'Unknown'),
-            'vbd': player_row.get('VBD_Value', 0),
-            'overall_rank': player_row.get('Overall_Rank', 999)
+            'player': str(player_dict.get('Player_Name', 'Unknown Player')),
+            'position': str(player_dict.get('Position', 'UNKNOWN')),
+            'team_name': str(player_dict.get('Team', 'Unknown')),
+            'vbd': float(player_dict.get('VBD_Value', 0)),
+            'overall_rank': int(player_dict.get('Overall_Rank', 999))
         }
         
         st.session_state.draft_results.append(pick_info)
         
-        # Remove player from available
+        # Remove player from available (optimized)
+        player_name = player_dict.get('Player_Name')
         st.session_state.available_players = st.session_state.available_players[
-            st.session_state.available_players['Player_Name'] != player_row['Player_Name']
-        ]
+            st.session_state.available_players['Player_Name'] != player_name
+        ].reset_index(drop=True)
         
         # Add to user team
         if st.session_state.draft_simulator:
-            st.session_state.draft_simulator.user_team.append(player_row.to_dict())
+            st.session_state.draft_simulator.user_team.append(player_dict)
         
         # Move to next pick
         st.session_state.current_pick_number += 1
         st.session_state.waiting_for_user_pick = False
-        st.session_state.pick_timer_start = datetime.now()
+        self.start_pick_timer()
+        
+        # Show success message
+        st.success(f"🎯 You drafted {pick_info['player']} ({pick_info['position']})!")
 
     def handle_ai_pick(self):
-        """Handle AI picks with timer."""
-        # Check if we need to make an AI pick
-        if st.session_state.pick_timer_start:
-            elapsed = (datetime.now() - st.session_state.pick_timer_start).total_seconds()
+        """Handle AI picks with optimized timer."""
+        if not st.session_state.pick_timer_start:
+            self.start_pick_timer()
+            return
             
-            # AI picks after 3-8 seconds (random timing)
-            ai_pick_time = random.uniform(3, 8)
-            
-            if elapsed >= ai_pick_time and not st.session_state.waiting_for_user_pick:
-                # Make AI pick
-                simulator = st.session_state.draft_simulator
-                team_index = simulator.get_pick_order(st.session_state.current_pick_number)
-                
-                if len(st.session_state.available_players) > 0:
-                    ai_team_index = team_index - 1 if team_index > 0 else 8
-                    ai_pick = simulator.ai_draft_pick(ai_team_index, st.session_state.available_players)
-                    
-                    if ai_pick:
-                        pick_info = {
-                            'pick': st.session_state.current_pick_number,
-                            'round': ((st.session_state.current_pick_number - 1) // 10) + 1,
-                            'team': f'AI Team {team_index + 1}',
-                            'player': ai_pick['Player_Name'],
-                            'position': ai_pick['Position'],
-                            'team_name': ai_pick.get('Team', 'Unknown'),
-                            'vbd': ai_pick.get('VBD_Value', 0),
-                            'overall_rank': ai_pick.get('Overall_Rank', 999)
-                        }
-                        
-                        st.session_state.draft_results.append(pick_info)
-                        
-                        # Remove player from available
-                        st.session_state.available_players = st.session_state.available_players[
-                            st.session_state.available_players['Player_Name'] != ai_pick['Player_Name']
-                        ]
-                        
-                        # Add to AI team
-                        if ai_team_index < 9:
-                            simulator.ai_teams[ai_team_index].append(ai_pick)
-                        
-                        # Move to next pick
-                        st.session_state.current_pick_number += 1
-                        st.session_state.pick_timer_start = datetime.now()
-                        
-                        st.rerun()
+        elapsed = (datetime.now() - st.session_state.pick_timer_start).total_seconds()
         
-        # Auto-refresh every 1 second during AI picks
-        if not st.session_state.waiting_for_user_pick:
-            st.rerun()
+        # AI picks after 4-7 seconds (more consistent timing)
+        if not hasattr(st.session_state, 'ai_pick_time'):
+            st.session_state.ai_pick_time = random.uniform(4, 7)
+        
+        if elapsed >= st.session_state.ai_pick_time and not st.session_state.waiting_for_user_pick:
+            # Make AI pick
+            simulator = st.session_state.draft_simulator
+            team_index = simulator.get_pick_order(st.session_state.current_pick_number)
+            
+            if len(st.session_state.available_players) > 0:
+                ai_team_index = team_index - 1 if team_index > 0 else 8
+                ai_pick = simulator.ai_draft_pick(ai_team_index, st.session_state.available_players)
+                
+                if ai_pick:
+                    pick_info = {
+                        'pick': st.session_state.current_pick_number,
+                        'round': ((st.session_state.current_pick_number - 1) // 10) + 1,
+                        'team': f'AI Team {team_index + 1}',
+                        'player': ai_pick.get('Player_Name', 'Unknown Player'),
+                        'position': ai_pick.get('Position', 'UNKNOWN'),
+                        'team_name': ai_pick.get('Team', 'Unknown'),
+                        'vbd': float(ai_pick.get('VBD_Value', 0)),
+                        'overall_rank': int(ai_pick.get('Overall_Rank', 999))
+                    }
+                    
+                    st.session_state.draft_results.append(pick_info)
+                    
+                    # Remove player from available (optimized)
+                    st.session_state.available_players = st.session_state.available_players[
+                        st.session_state.available_players['Player_Name'] != ai_pick.get('Player_Name')
+                    ].reset_index(drop=True)
+                    
+                    # Add to AI team
+                    if ai_team_index < 9:
+                        simulator.ai_teams[ai_team_index].append(ai_pick)
+                    
+                    # Move to next pick
+                    st.session_state.current_pick_number += 1
+                    st.session_state.pick_timer_start = datetime.now()
+                    del st.session_state.ai_pick_time  # Reset for next AI turn
+                    
+                    # Show pick notification
+                    st.success(f"🤖 AI Team {team_index + 1} selected {pick_info['player']} ({pick_info['position']})")
+                    
+                    st.rerun()
+        
+        # Optimized refresh - only refresh if timer is active and pick hasn't been made
+        if not st.session_state.waiting_for_user_pick and st.session_state.pick_timer_start:
+            elapsed = (datetime.now() - st.session_state.pick_timer_start).total_seconds()
+            # Only refresh every 0.5 seconds instead of constantly
+            if elapsed < 10:  # Only refresh for first 10 seconds of AI turn
+                time.sleep(0.5)
+                st.rerun()
 
     def display_draft_results_and_grading(self):
         """Display draft results with AI grading and analytics."""
