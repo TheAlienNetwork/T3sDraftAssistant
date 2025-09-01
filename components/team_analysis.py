@@ -117,9 +117,15 @@ class TeamAnalysis:
             )
             
             if analysis_depth == "Top 50 Players":
-                analysis_data = self.data.nlargest(50, 'grade')
+                if 'grade' in self.data.columns:
+                    analysis_data = self.data.nlargest(50, 'grade')
+                else:
+                    analysis_data = self.data.head(50)
             elif analysis_depth == "Top 100 Players":
-                analysis_data = self.data.nlargest(100, 'grade')
+                if 'grade' in self.data.columns:
+                    analysis_data = self.data.nlargest(100, 'grade')
+                else:
+                    analysis_data = self.data.head(100)
             else:
                 analysis_data = self.data
         
@@ -173,7 +179,7 @@ class TeamAnalysis:
                 height=600
             )
             
-            st.plotly_chart(fig_fit, use_container_width=True)
+            st.plotly_chart(fig_fit, width='stretch')
             
             # Detailed fit table
             display_cols = ['name', 'position_group', 'grade', 'team_fit_score', 'need_priority', 'value_score']
@@ -182,7 +188,7 @@ class TeamAnalysis:
             
             st.dataframe(
                 top_fits[display_cols].round(2),
-                use_container_width=True,
+                width='stretch',
                 hide_index=True
             )
         
@@ -224,9 +230,9 @@ class TeamAnalysis:
                 font=dict(color='white')
             )
             
-            st.plotly_chart(fig_needs, use_container_width=True)
+            st.plotly_chart(fig_needs, width='stretch')
             
-            st.dataframe(needs_df.round(2), use_container_width=True, hide_index=True)
+            st.dataframe(needs_df.round(2), width='stretch', hide_index=True)
     
     def _calculate_team_fit_scores(self, data: pd.DataFrame, primary_needs: List, secondary_needs: List) -> pd.DataFrame:
         """Calculate team fit scores for players."""
@@ -292,7 +298,7 @@ class TeamAnalysis:
                     yaxis_title="Average Grade"
                 )
                 
-                st.plotly_chart(fig_pos_value, use_container_width=True)
+                st.plotly_chart(fig_pos_value, width='stretch')
         
         with col2:
             # Position depth analysis
@@ -335,7 +341,7 @@ class TeamAnalysis:
                 yaxis_title="Number of Players"
             )
             
-            st.plotly_chart(fig_depth, use_container_width=True)
+            st.plotly_chart(fig_depth, width='stretch')
         
         # Position value tables
         st.markdown("#### 📋 Detailed Position Analysis")
@@ -393,7 +399,7 @@ class TeamAnalysis:
         st.markdown(f"##### 🌟 Top {tier} Players")
         st.dataframe(
             top_tier_players[display_cols].round(2),
-            use_container_width=True,
+            width='stretch',
             hide_index=True
         )
     
@@ -442,7 +448,7 @@ class TeamAnalysis:
             height=800
         )
         
-        st.plotly_chart(fig_heatmap, use_container_width=True)
+        st.plotly_chart(fig_heatmap, width='stretch')
         
         # Position demand analysis
         st.markdown("#### 📈 Position Demand Across League")
@@ -493,9 +499,9 @@ class TeamAnalysis:
             font=dict(color='white')
         )
         
-        st.plotly_chart(fig_supply_demand, use_container_width=True)
+        st.plotly_chart(fig_supply_demand, width='stretch')
         
-        st.dataframe(demand_df.round(2), use_container_width=True)
+        st.dataframe(demand_df.round(2), width='stretch')
     
     def _render_value_opportunities(self):
         """Render value opportunities analysis."""
@@ -559,7 +565,7 @@ class TeamAnalysis:
                 font=dict(color='white')
             )
             
-            st.plotly_chart(fig_opp, use_container_width=True)
+            st.plotly_chart(fig_opp, width='stretch')
         
         with col2:
             # Value rating distribution
@@ -578,11 +584,11 @@ class TeamAnalysis:
                 font=dict(color='white')
             )
             
-            st.plotly_chart(fig_rating, use_container_width=True)
+            st.plotly_chart(fig_rating, width='stretch')
         
         # Detailed opportunities table
         st.markdown("#### 📊 Detailed Value Analysis")
-        st.dataframe(opp_df.round(2), use_container_width=True, hide_index=True)
+        st.dataframe(opp_df.round(2), width='stretch', hide_index=True)
         
         # Specific player recommendations
         st.markdown("#### 🎯 High-Value Player Recommendations")
@@ -601,7 +607,7 @@ class TeamAnalysis:
                     
                     st.dataframe(
                         pos_players[display_cols].round(2),
-                        use_container_width=True,
+                        width='stretch',
                         hide_index=True
                     )
     
@@ -672,7 +678,7 @@ class TeamAnalysis:
                     
                     st.dataframe(
                         top_players[display_cols].round(2),
-                        use_container_width=True,
+                        width='stretch',
                         hide_index=True
                     )
     
@@ -710,7 +716,7 @@ class TeamAnalysis:
                 
                 st.dataframe(
                     need_players[display_cols].round(2),
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True
                 )
     
@@ -765,7 +771,7 @@ class TeamAnalysis:
         display_cols = ['name', 'position_group', 'grade', 'value_score', 'grade_diff', 'scarcity_bonus']
         st.dataframe(
             top_value[display_cols].round(3),
-            use_container_width=True,
+            width='stretch',
             hide_index=True
         )
     
@@ -834,10 +840,10 @@ class TeamAnalysis:
             font=dict(color='white')
         )
         
-        st.plotly_chart(fig_scarcity, use_container_width=True)
+        st.plotly_chart(fig_scarcity, width='stretch')
         
         # Scarcity table
-        st.dataframe(scarcity_df.round(2), use_container_width=True, hide_index=True)
+        st.dataframe(scarcity_df.round(2), width='stretch', hide_index=True)
         
         # Scarcity-based recommendations
         st.markdown("#### 🚨 Scarcity Alerts")
@@ -864,6 +870,6 @@ class TeamAnalysis:
                     
                     st.dataframe(
                         pos_players[display_cols].round(2),
-                        use_container_width=True,
+                        width='stretch',
                         hide_index=True
                     )

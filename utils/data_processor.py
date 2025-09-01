@@ -269,6 +269,179 @@ class DataProcessor:
         
         return position_str.title()
     
+    def _generate_ai_grades(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Generate AI-based grades for players based on available statistics."""
+        result_df = df.copy()
+        
+        # Check if grade column exists and has missing values
+        needs_grades = False
+        if 'grade' not in result_df.columns:
+            result_df['grade'] = np.nan
+            needs_grades = True
+        else:
+            needs_grades = result_df['grade'].isna().any()
+        
+        if not needs_grades:
+            return result_df
+        
+        # Get numeric features for grade calculation
+        numeric_features = []
+        feature_weights = {}
+        
+        # Define feature importance weights based on NFL scouting
+        if 'forty_time' in result_df.columns:
+            numeric_features.append('forty_time')
+            feature_weights['forty_time'] = -0.3  # Lower is better
+        
+        if 'height_inches' in result_df.columns:
+            numeric_features.append('height_inches')
+            feature_weights['height_inches'] = 0.15
+        
+        if 'weight' in result_df.columns:
+            numeric_features.append('weight')
+            feature_weights['weight'] = 0.1
+        
+        if 'vertical' in result_df.columns:
+            numeric_features.append('vertical')
+            feature_weights['vertical'] = 0.2
+        
+        if 'broad_jump' in result_df.columns:
+            numeric_features.append('broad_jump')
+            feature_weights['broad_jump'] = 0.15
+        
+        if 'bench_press' in result_df.columns:
+            numeric_features.append('bench_press')
+            feature_weights['bench_press'] = 0.1
+        
+        if 'three_cone' in result_df.columns:
+            numeric_features.append('three_cone')
+            feature_weights['three_cone'] = -0.15  # Lower is better
+        
+        if 'shuttle' in result_df.columns:
+            numeric_features.append('shuttle')
+            feature_weights['shuttle'] = -0.1  # Lower is better
+        
+        if 'bmi' in result_df.columns:
+            numeric_features.append('bmi')
+            feature_weights['bmi'] = -0.05  # Moderate BMI preferred
+        
+        if 'speed_score' in result_df.columns:
+            numeric_features.append('speed_score')
+            feature_weights['speed_score'] = 0.25
+        
+        # Calculate grades for each position group
+        if 'position_group' in result_df.columns and len(numeric_features) > 0:
+            for pos_group in result_df['position_group'].unique():
+                if pd.isna(pos_group):
+                    continue
+                
+                pos_mask = result_df['position_group'] == pos_group
+                pos_data = result_df[pos_mask].copy()
+                
+                # Calculate weighted score for this position group
+                scores = []
+                for idx, row in pos_data.iterrows():
+                    score = 50  # Base score
+                    total_weight = 0
+                    
+                    for feature in numeric_features:
+                        if feature in pos_data.columns and pd.notna(row[feature]):
+                            # Normalize feature value within position group
+                            feature_values = pos_data[feature].dropna()
+                            if len(feature_values) > 1:
+                                feature_std = feature_values.std()
+                                feature_mean = feature_values.mean()
+                                
+                                if feature_std > 0:
+                                    normalized_value = (row[feature] - feature_mean) / feature_std
+                                    weight = feature_weights.get(feature, 0.1)
+                                    score += normalized_value * weight * 10
+                                    total_weight += abs(weight)
+                    
+                    # Apply position-specific adjustments
+                    score = self._apply_position_adjustments(score, pos_group, row)
+                    
+                    # Ensure score is within reasonable bounds (0-100)
+                    score = max(0, min(100, score))
+                    scores.append(score)
+                
+                # Update grades for this position group where missing
+                missing_mask = pos_mask & result_df['grade'].isna()
+                if missing_mask.any():
+                    result_df.loc[missing_mask, 'grade'] = scores[:missing_mask.sum()]
+        
+        # Fill any remaining missing grades with global average
+        if result_df['grade'].isna().any():
+            global_avg = result_df['grade'].mean()
+            if pd.isna(global_avg):
+                global_avg = 50  # Default fallback
+            result_df['grade'] = result_df['grade'].fillna(global_avg)
+        
+        return result_df
+    
+    def _apply_position_adjustments(self, base_score: float, position_group: str, player_data: pd.Series) -> float:
+        """Apply position-specific adjustments to the base score."""
+        score = base_score
+        
+        # Position-specific adjustments
+        if position_group == 'Quarterback':
+            # QBs need good arm strength and accuracy (harder to measure from combine)
+            score += 5  # Slight bonus for the premium position
+        
+        elif position_group == 'Running Back':
+            # RBs benefit more from speed and agility
+            if 'forty_time' in player_data and pd.notna(player_data['forty_time']):
+                if player_data['forty_time'] < 4.5:
+                    score += 8
+                elif player_data['forty_time'] < 4.6:
+                    score += 4
+        
+        elif position_group == 'Wide Receiver':
+            # WRs need speed and jumping ability
+            if 'vertical' in player_data and pd.notna(player_data['vertical']):
+                if player_data['vertical'] > 35:
+                    score += 6
+            if 'forty_time' in player_data and pd.notna(player_data['forty_time']):
+                if player_data['forty_time'] < 4.4:
+                    score += 10
+                elif player_data['forty_time'] < 4.5:
+                    score += 5
+        
+        elif position_group == 'Defensive Line':
+            # DL needs size and strength
+            if 'bench_press' in player_data and pd.notna(player_data['bench_press']):
+                if player_data['bench_press'] > 25:
+                    score += 6
+            if 'weight' in player_data and pd.notna(player_data['weight']):
+                if player_data['weight'] > 280:
+                    score += 4
+        
+        elif position_group == 'Linebacker':
+            # LBs need balance of size, speed, and agility
+            if 'three_cone' in player_data and pd.notna(player_data['three_cone']):
+                if player_data['three_cone'] < 7.0:
+                    score += 5
+        
+        elif position_group == 'Defensive Back':
+            # DBs need speed and agility
+            if 'forty_time' in player_data and pd.notna(player_data['forty_time']):
+                if player_data['forty_time'] < 4.4:
+                    score += 8
+            if 'three_cone' in player_data and pd.notna(player_data['three_cone']):
+                if player_data['three_cone'] < 6.8:
+                    score += 5
+        
+        elif position_group == 'Offensive Line':
+            # OL needs size and functional strength
+            if 'weight' in player_data and pd.notna(player_data['weight']):
+                if player_data['weight'] > 300:
+                    score += 6
+            if 'bench_press' in player_data and pd.notna(player_data['bench_press']):
+                if player_data['bench_press'] > 30:
+                    score += 5
+        
+        return score
+    
     def _clean_combined_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Final cleaning and feature engineering for combined data."""
         cleaned_df = df.copy()
@@ -289,13 +462,12 @@ class DataProcessor:
         if 'position' in cleaned_df.columns:
             cleaned_df['position_group'] = cleaned_df['position'].apply(self._get_position_group)
         
-        # Fill missing grades with position-based averages
-        if 'grade' in cleaned_df.columns and 'position' in cleaned_df.columns:
-            for position in cleaned_df['position'].unique():
-                pos_mask = cleaned_df['position'] == position
-                pos_avg = cleaned_df.loc[pos_mask, 'grade'].mean()
-                if not pd.isna(pos_avg):
-                    cleaned_df.loc[pos_mask & cleaned_df['grade'].isna(), 'grade'] = pos_avg
+        # Generate AI-based grades if missing
+        cleaned_df = self._generate_ai_grades(cleaned_df)
+        
+        # Clean position data to handle mixed types
+        if 'position' in cleaned_df.columns:
+            cleaned_df['position'] = cleaned_df['position'].fillna('Unknown').astype(str)
         
         return cleaned_df
     

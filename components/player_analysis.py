@@ -53,7 +53,9 @@ class PlayerAnalysis:
         with col2:
             # Additional filters
             if 'position' in self.data.columns:
-                positions = ['All'] + sorted(self.data['position'].unique())
+                # Clean positions and handle mixed types
+                unique_positions = [str(pos) for pos in self.data['position'].unique() if pd.notna(pos) and str(pos) != 'nan']
+                positions = ['All'] + sorted(unique_positions)
                 selected_position = st.selectbox("Filter by Position", positions)
                 
                 if selected_position != 'All':
@@ -155,7 +157,7 @@ class PlayerAnalysis:
             
             if info_data:
                 info_df = pd.DataFrame(info_data)
-                st.dataframe(info_df, use_container_width=True, hide_index=True)
+                st.dataframe(info_df, width='stretch', hide_index=True)
         
         with col2:
             st.markdown("#### 🏃‍♂️ Combine Metrics")
@@ -180,7 +182,7 @@ class PlayerAnalysis:
             
             if combine_data:
                 combine_df = pd.DataFrame(combine_data)
-                st.dataframe(combine_df[['Metric', 'Value']], use_container_width=True, hide_index=True)
+                st.dataframe(combine_df[['Metric', 'Value']], width='stretch', hide_index=True)
                 
                 # Radar chart for combine metrics
                 if len(combine_data) >= 3:
@@ -204,7 +206,7 @@ class PlayerAnalysis:
                         font=dict(color='white')
                     )
                     
-                    st.plotly_chart(fig_radar, use_container_width=True)
+                    st.plotly_chart(fig_radar, width='stretch')
             else:
                 st.info("No combine metrics available for this player.")
     
@@ -254,7 +256,7 @@ class PlayerAnalysis:
                 percentile_df = pd.DataFrame(percentile_data)
                 st.dataframe(
                     percentile_df[['Metric', 'Player Value', 'Position Avg', 'Percentile']],
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True
                 )
             
@@ -285,7 +287,7 @@ class PlayerAnalysis:
                     yaxis_title="Metric"
                 )
                 
-                st.plotly_chart(fig_percentile, use_container_width=True)
+                st.plotly_chart(fig_percentile, width='stretch')
         
         # Strengths and weaknesses
         if percentile_data:
@@ -366,7 +368,7 @@ class PlayerAnalysis:
         
         st.dataframe(
             comparison_display.style.apply(highlight_player, axis=1),
-            use_container_width=True,
+            width='stretch',
             hide_index=True
         )
         
@@ -413,7 +415,7 @@ class PlayerAnalysis:
                 font=dict(color='white')
             )
             
-            st.plotly_chart(fig_radar_comp, use_container_width=True)
+            st.plotly_chart(fig_radar_comp, width='stretch')
     
     def _render_player_projections(self, player_data):
         """Render player projection analysis."""
@@ -450,7 +452,7 @@ class PlayerAnalysis:
             ]
             
             context_df = pd.DataFrame(context_data)
-            st.dataframe(context_df, use_container_width=True, hide_index=True)
+            st.dataframe(context_df, width='stretch', hide_index=True)
         
         with col2:
             st.markdown("##### 🎯 Projection Categories")
@@ -523,7 +525,7 @@ class PlayerAnalysis:
             font=dict(color='white')
         )
         
-        st.plotly_chart(fig_dist, use_container_width=True)
+        st.plotly_chart(fig_dist, width='stretch')
     
     def _render_detailed_stats(self, player_data):
         """Render detailed player statistics."""
@@ -557,7 +559,7 @@ class PlayerAnalysis:
             
             if not category_data.empty:
                 st.markdown(f"##### {category}")
-                st.dataframe(category_data, use_container_width=True, hide_index=True)
+                st.dataframe(category_data, width='stretch', hide_index=True)
                 st.markdown("")
         
         # Show any remaining attributes
@@ -566,4 +568,4 @@ class PlayerAnalysis:
         
         if not remaining_data.empty:
             st.markdown("##### Other Attributes")
-            st.dataframe(remaining_data, use_container_width=True, hide_index=True)
+            st.dataframe(remaining_data, width='stretch', hide_index=True)

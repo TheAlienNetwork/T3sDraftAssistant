@@ -50,7 +50,7 @@ class DraftSimulator:
         st.markdown("## 🏈 NFL Draft Simulator")
         
         if 'grade' not in self.data.columns:
-            st.error("Grade column required for draft simulation.")
+            st.error("Grade column required for draft simulation. AI-generated grades should be available.")
             return
         
         # Simulation configuration
@@ -134,7 +134,7 @@ class DraftSimulator:
             yaxis_title="Number of Players"
         )
         
-        st.plotly_chart(fig_grade_dist, use_container_width=True)
+        st.plotly_chart(fig_grade_dist, width='stretch')
         
         # Position breakdown
         if 'position_group' in self.data.columns:
@@ -159,7 +159,7 @@ class DraftSimulator:
                     yaxis_title="Number of Players"
                 )
                 
-                st.plotly_chart(fig_pos, use_container_width=True)
+                st.plotly_chart(fig_pos, width='stretch')
             
             with col_b:
                 # Top prospects by position
@@ -181,7 +181,7 @@ class DraftSimulator:
                 
                 st.dataframe(
                     top_prospects[display_cols].round(2),
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True
                 )
     
@@ -304,7 +304,7 @@ class DraftSimulator:
         
         st.dataframe(
             display_results[available_cols].round(2),
-            use_container_width=True,
+            width='stretch',
             hide_index=True
         )
         
@@ -329,7 +329,7 @@ class DraftSimulator:
                     font=dict(color='white')
                 )
                 
-                st.plotly_chart(fig_pos, use_container_width=True)
+                st.plotly_chart(fig_pos, width='stretch')
         
         with col2:
             # Grade by round
@@ -351,7 +351,7 @@ class DraftSimulator:
                 yaxis_title="Average Grade"
             )
             
-            st.plotly_chart(fig_grade, use_container_width=True)
+            st.plotly_chart(fig_grade, width='stretch')
         
         # Round-by-round breakdown
         st.markdown("#### 🔄 Round-by-Round Analysis")
@@ -380,7 +380,7 @@ class DraftSimulator:
                 
                 # Round picks table
                 round_display = round_data[['pick', 'team', 'player', 'position', 'grade']].copy()
-                st.dataframe(round_display.round(2), use_container_width=True, hide_index=True)
+                st.dataframe(round_display.round(2), width='stretch', hide_index=True)
     
     def _display_multiple_simulations(self, results: pd.DataFrame, num_sims: int):
         """Display results of multiple simulations."""
@@ -432,7 +432,7 @@ class DraftSimulator:
                 yaxis_title="Player"
             )
             
-            st.plotly_chart(fig_freq, use_container_width=True)
+            st.plotly_chart(fig_freq, width='stretch')
         
         with col_b:
             # Position frequency
@@ -452,7 +452,7 @@ class DraftSimulator:
                     font=dict(color='white')
                 )
                 
-                st.plotly_chart(fig_pos_freq, use_container_width=True)
+                st.plotly_chart(fig_pos_freq, width='stretch')
         
         # Average draft position
         st.markdown("#### 📍 Average Draft Position")
@@ -466,7 +466,7 @@ class DraftSimulator:
         avg_draft_pos = avg_draft_pos[avg_draft_pos['Times Drafted'] >= max(1, num_sims * 0.2)]  # Show players drafted in at least 20% of sims
         avg_draft_pos = avg_draft_pos.sort_values('Avg Pick').head(30)
         
-        st.dataframe(avg_draft_pos, use_container_width=True)
+        st.dataframe(avg_draft_pos, width='stretch')
         
         # Round analysis
         st.markdown("#### 🔄 Round-by-Round Simulation Analysis")
@@ -488,4 +488,4 @@ class DraftSimulator:
             yaxis_title="Average Grade"
         )
         
-        st.plotly_chart(fig_round_trends, use_container_width=True)
+        st.plotly_chart(fig_round_trends, width='stretch')

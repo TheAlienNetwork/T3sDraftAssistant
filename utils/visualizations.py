@@ -77,7 +77,7 @@ class Visualizations:
                     yaxis_title="Frequency"
                 )
                 
-                st.plotly_chart(fig_hist, use_container_width=True)
+                st.plotly_chart(fig_hist, width='stretch')
         
         with row1_col2:
             # Position distribution
@@ -97,7 +97,7 @@ class Visualizations:
                     font=dict(color='white')
                 )
                 
-                st.plotly_chart(fig_pie, use_container_width=True)
+                st.plotly_chart(fig_pie, width='stretch')
         
         # Second row
         row2_col1, row2_col2 = st.columns(2)
@@ -124,7 +124,7 @@ class Visualizations:
                     yaxis_title="College"
                 )
                 
-                st.plotly_chart(fig_college, use_container_width=True)
+                st.plotly_chart(fig_college, width='stretch')
         
         with row2_col2:
             # Physical attributes scatter
@@ -146,7 +146,7 @@ class Visualizations:
                     yaxis_title="Weight (lbs)"
                 )
                 
-                st.plotly_chart(fig_physical, use_container_width=True)
+                st.plotly_chart(fig_physical, width='stretch')
     
     def render_position_analysis(self):
         """Render position-specific analysis."""
@@ -218,7 +218,7 @@ class Visualizations:
                     font=dict(color='white')
                 )
                 
-                st.plotly_chart(fig_grade, use_container_width=True)
+                st.plotly_chart(fig_grade, width='stretch')
         
         with row1_col2:
             # Top colleges for this position
@@ -241,7 +241,7 @@ class Visualizations:
                     yaxis_title="Number of Players"
                 )
                 
-                st.plotly_chart(fig_college, use_container_width=True)
+                st.plotly_chart(fig_college, width='stretch')
         
         # Combine metrics analysis
         combine_cols = ['forty_time', 'bench_press', 'vertical', 'broad_jump', 'three_cone', 'shuttle']
@@ -279,7 +279,7 @@ class Visualizations:
                 height=600
             )
             
-            st.plotly_chart(fig_combine, use_container_width=True)
+            st.plotly_chart(fig_combine, width='stretch')
         
         # Top performers table
         if 'grade' in position_data.columns:
@@ -295,7 +295,7 @@ class Visualizations:
             
             st.dataframe(
                 top_performers[display_cols].round(2),
-                use_container_width=True
+                width='stretch'
             )
     
     def render_combine_metrics(self):
@@ -324,7 +324,7 @@ class Visualizations:
         st.markdown("#### 📊 Summary Statistics")
         
         summary_stats = self.data[selected_metrics].describe().round(3)
-        st.dataframe(summary_stats, use_container_width=True)
+        st.dataframe(summary_stats, width='stretch')
         
         # Distribution plots
         st.markdown("#### 📈 Metric Distributions")
@@ -366,7 +366,7 @@ class Visualizations:
                             height=400
                         )
                         
-                        st.plotly_chart(fig_dist, use_container_width=True)
+                        st.plotly_chart(fig_dist, width='stretch')
         
         # Position comparison
         if 'position_group' in self.data.columns:
@@ -395,7 +395,7 @@ class Visualizations:
                 yaxis_title=selected_metric.replace('_', ' ').title()
             )
             
-            st.plotly_chart(fig_box, use_container_width=True)
+            st.plotly_chart(fig_box, width='stretch')
         
         # Performance percentiles
         st.markdown("#### 🎯 Performance Percentiles")
@@ -415,7 +415,7 @@ class Visualizations:
         percentile_df = pd.DataFrame(percentile_data)
         percentile_pivot = percentile_df.pivot(index='Metric', columns='Percentile', values='Value')
         
-        st.dataframe(percentile_pivot.round(3), use_container_width=True)
+        st.dataframe(percentile_pivot.round(3), width='stretch')
     
     def render_statistical_correlations(self):
         """Render statistical correlation analysis."""
@@ -450,7 +450,7 @@ class Visualizations:
             height=600
         )
         
-        st.plotly_chart(fig_heatmap, use_container_width=True)
+        st.plotly_chart(fig_heatmap, width='stretch')
         
         # Strong correlations
         st.markdown("#### 🔍 Strong Correlations")
@@ -469,7 +469,7 @@ class Visualizations:
         
         if strong_corr:
             strong_corr_df = pd.DataFrame(strong_corr).sort_values('Correlation', key=abs, ascending=False)
-            st.dataframe(strong_corr_df.round(3), use_container_width=True)
+            st.dataframe(strong_corr_df.round(3), width='stretch')
         else:
             st.info("No strong correlations found (threshold: |r| > 0.3)")
         
@@ -506,7 +506,7 @@ class Visualizations:
                     title=f"Correlation: {var1.title()} vs {var2.title()} (r = {corr_val:.3f})"
                 )
                 
-                st.plotly_chart(fig_scatter, use_container_width=True)
+                st.plotly_chart(fig_scatter, width='stretch')
     
     def render_performance_trends(self):
         """Render performance trends analysis."""
@@ -525,7 +525,7 @@ class Visualizations:
             ]).round(2)
             
             position_stats.columns = ['Count', 'Mean Grade', 'Std Dev', 'Min Grade', 'Max Grade']
-            st.dataframe(position_stats, use_container_width=True)
+            st.dataframe(position_stats, width='stretch')
             
             # Position performance chart
             fig_pos = px.box(
@@ -545,7 +545,7 @@ class Visualizations:
                 yaxis_title="Grade"
             )
             
-            st.plotly_chart(fig_pos, use_container_width=True)
+            st.plotly_chart(fig_pos, width='stretch')
         
         # College performance analysis
         if 'college' in self.data.columns:
@@ -578,9 +578,9 @@ class Visualizations:
                     yaxis_title="Average Grade"
                 )
                 
-                st.plotly_chart(fig_college, use_container_width=True)
+                st.plotly_chart(fig_college, width='stretch')
                 
-                st.dataframe(top_colleges, use_container_width=True)
+                st.dataframe(top_colleges, width='stretch')
         
         # Physical attributes vs performance
         physical_cols = ['height_inches', 'weight', 'bmi']
@@ -625,4 +625,4 @@ class Visualizations:
                 yaxis_title="Average Grade"
             )
             
-            st.plotly_chart(fig_physical, use_container_width=True)
+            st.plotly_chart(fig_physical, width='stretch')

@@ -125,7 +125,7 @@ class AIAnalytics:
                 font=dict(color='white')
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
             
             # Feature importance
             feature_importance = pd.DataFrame({
@@ -149,7 +149,7 @@ class AIAnalytics:
                 font=dict(color='white')
             )
             
-            st.plotly_chart(fig_importance, use_container_width=True)
+            st.plotly_chart(fig_importance, width='stretch')
     
     def render_risk_assessment(self):
         """Render risk assessment analysis."""
@@ -201,7 +201,7 @@ class AIAnalytics:
                 font=dict(color='white')
             )
             
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, width='stretch')
         
         with col2:
             # Risk by position
@@ -227,7 +227,7 @@ class AIAnalytics:
                     font=dict(color='white')
                 )
                 
-                st.plotly_chart(fig_heatmap, use_container_width=True)
+                st.plotly_chart(fig_heatmap, width='stretch')
         
         # Risk factors analysis
         st.markdown("#### 🔍 Risk Factors Analysis")
@@ -266,7 +266,7 @@ class AIAnalytics:
                 font=dict(color='white')
             )
             
-            st.plotly_chart(fig_risk, use_container_width=True)
+            st.plotly_chart(fig_risk, width='stretch')
     
     def render_clustering_analysis(self):
         """Render player clustering analysis."""
@@ -338,7 +338,7 @@ class AIAnalytics:
                     font=dict(color='white')
                 )
                 
-                st.plotly_chart(fig_scatter, use_container_width=True)
+                st.plotly_chart(fig_scatter, width='stretch')
             
             # Cluster analysis
             st.markdown("#### 📊 Cluster Analysis")
@@ -361,7 +361,7 @@ class AIAnalytics:
                 cluster_stats.append(stats_dict)
             
             cluster_stats_df = pd.DataFrame(cluster_stats)
-            st.dataframe(cluster_stats_df, use_container_width=True)
+            st.dataframe(cluster_stats_df, width='stretch')
             
             # Cluster characteristics
             fig_radar = go.Figure()
@@ -392,7 +392,7 @@ class AIAnalytics:
                 font=dict(color='white')
             )
             
-            st.plotly_chart(fig_radar, use_container_width=True)
+            st.plotly_chart(fig_radar, width='stretch')
     
     def render_market_value_analysis(self):
         """Render market value analysis."""
@@ -443,7 +443,7 @@ class AIAnalytics:
                 yaxis_title="Number of Players"
             )
             
-            st.plotly_chart(fig_value, use_container_width=True)
+            st.plotly_chart(fig_value, width='stretch')
         
         with col2:
             # Value by position
@@ -464,7 +464,7 @@ class AIAnalytics:
                     yaxis_title="Number of Players"
                 )
                 
-                st.plotly_chart(fig_stack, use_container_width=True)
+                st.plotly_chart(fig_stack, width='stretch')
         
         # Value efficiency analysis
         st.markdown("#### 📈 Value Efficiency Metrics")
@@ -489,7 +489,7 @@ class AIAnalytics:
                     })
             
             efficiency_df = pd.DataFrame(efficiency_metrics)
-            st.dataframe(efficiency_df, use_container_width=True)
+            st.dataframe(efficiency_df, width='stretch')
         
         # Undervalued/Overvalued players
         if len(self.features) > 0:
@@ -524,8 +524,8 @@ class AIAnalytics:
                     
                     with col_a:
                         st.markdown("##### 📈 Most Undervalued")
-                        st.dataframe(undervalued.round(2), use_container_width=True)
+                        st.dataframe(undervalued.round(2), width='stretch')
                     
                     with col_b:
                         st.markdown("##### 📉 Most Overvalued")
-                        st.dataframe(overvalued.round(2), use_container_width=True)
+                        st.dataframe(overvalued.round(2), width='stretch')

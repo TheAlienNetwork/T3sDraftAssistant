@@ -50,14 +50,21 @@ class PlayerRanking:
             st.markdown("### 🔧 Ranking Filters")
             
             # Position filtering
-            all_positions = ['All Positions'] + sorted(self.data['position_group'].unique()) if 'position_group' in self.data.columns else ['All Positions']
+            if 'position_group' in self.data.columns:
+                unique_position_groups = [str(pos) for pos in self.data['position_group'].unique() if pd.notna(pos) and str(pos) != 'nan']
+                all_positions = ['All Positions'] + sorted(unique_position_groups)
+            else:
+                all_positions = ['All Positions']
             selected_position = st.selectbox("📍 Position Group", all_positions)
             
             if 'position' in self.data.columns:
                 if selected_position != 'All Positions' and 'position_group' in self.data.columns:
-                    specific_positions = ['All'] + sorted(self.data[self.data['position_group'] == selected_position]['position'].unique())
+                    position_subset = self.data[self.data['position_group'] == selected_position]['position']
+                    unique_positions = [str(pos) for pos in position_subset.unique() if pd.notna(pos) and str(pos) != 'nan']
+                    specific_positions = ['All'] + sorted(unique_positions)
                 else:
-                    specific_positions = ['All'] + sorted(self.data['position'].unique())
+                    unique_positions = [str(pos) for pos in self.data['position'].unique() if pd.notna(pos) and str(pos) != 'nan']
+                    specific_positions = ['All'] + sorted(unique_positions)
                 selected_specific_position = st.selectbox("🎯 Specific Position", specific_positions)
             
             # Grade range filter
@@ -526,8 +533,7 @@ class PlayerRanking:
                     y='grade',
                     color='position_group' if 'position_group' in data.columns else None,
                     title=f"Grade vs {selected_metric.replace('_', ' ').title()}",
-                    hover_data=['name'] if 'name' in data.columns else None,
-                    trendline="ols"
+                    hover_data=['name'] if 'name' in data.columns else None
                 )
                 
                 fig_scatter.update_layout(
