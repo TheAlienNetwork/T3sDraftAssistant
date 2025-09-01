@@ -1285,7 +1285,7 @@ class DraftSimulator:
         return draft_results
 
     def run_real_time_draft(self):
-        """Run the real-time draft with timers and user interaction."""
+        """Run the enhanced real-time draft with mock draft interface."""
         simulator = st.session_state.draft_simulator
         current_pick = st.session_state.current_pick_number
         max_picks = st.session_state.draft_rounds * 10
@@ -1299,158 +1299,379 @@ class DraftSimulator:
         team_index = simulator.get_pick_order(current_pick)
         round_num = ((current_pick - 1) // 10) + 1
         pick_in_round = ((current_pick - 1) % 10) + 1
-        
         is_user_turn = (team_index == st.session_state.user_draft_position - 1)
         
-        # Draft header with timer
+        # Enhanced Draft Header
         st.markdown(f"""
-        <div class="advanced-card" style="text-align: center; padding: 1.5rem; margin-bottom: 1rem;">
-            <h2>🏈 Live Draft - Round {round_num}, Pick {pick_in_round}</h2>
-            <h3>Overall Pick #{current_pick}</h3>
+        <div class="draft-container" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); text-align: center; padding: 2rem; margin-bottom: 1rem; border-radius: 20px; box-shadow: 0 15px 35px rgba(30,60,114,0.3);">
+            <h1 style="margin: 0; font-size: 2.5rem; background: linear-gradient(135deg, #00ff87 0%, #60efff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">🏈 LIVE FANTASY DRAFT</h1>
+            <h2 style="margin: 0.5rem 0; color: #ffffff;">Round {round_num} | Pick {pick_in_round} | Overall #{current_pick}</h2>
+            <div style="display: flex; justify-content: center; gap: 2rem; margin-top: 1rem;">
+                <div><strong>Position:</strong> {st.session_state.user_draft_position}</div>
+                <div><strong>League:</strong> 10 Team</div>
+                <div><strong>Rounds:</strong> {st.session_state.draft_rounds}</div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Timer and current pick info
-        col1, col2, col3 = st.columns([1, 2, 1])
-        
-        with col1:
-            # Timer display
-            if st.session_state.pick_timer_start:
-                elapsed = (datetime.now() - st.session_state.pick_timer_start).total_seconds()
-                remaining = max(0, 60 - elapsed)
-                
-                timer_color = "#ff4444" if remaining < 10 else "#ffaa00" if remaining < 30 else "#44ff44"
-                
-                st.markdown(f"""
-                <div style="text-align: center; padding: 1rem; background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%); border-radius: 12px; border: 2px solid {timer_color};">
-                    <h2 style="color: {timer_color}; margin: 0;">⏱️ {remaining:.0f}s</h2>
-                    <p style="margin: 0;">Time Remaining</p>
-                </div>
-                """, unsafe_allow_html=True)
-        
-        with col2:
-            # Current pick info
-            if is_user_turn:
-                st.markdown(f"""
-                <div style="text-align: center; padding: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px;">
-                    <h2 style="margin: 0;">🎯 YOUR TURN TO PICK!</h2>
-                    <p style="margin: 0;">Select a player from the available list below</p>
-                </div>
-                """, unsafe_allow_html=True)
-                st.session_state.waiting_for_user_pick = True
-            else:
-                team_name = f"AI Team {team_index + 1}"
-                st.markdown(f"""
-                <div style="text-align: center; padding: 1.5rem; background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%); border-radius: 12px;">
-                    <h3 style="margin: 0;">🤖 {team_name} is picking...</h3>
-                    <p style="margin: 0;">AI analyzing available players</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-        with col3:
-            # Draft progress
-            progress = (current_pick - 1) / max_picks
-            st.markdown(f"""
-            <div style="text-align: center; padding: 1rem; background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%); border-radius: 12px;">
-                <h3 style="margin: 0;">{current_pick - 1}/{max_picks}</h3>
-                <p style="margin: 0;">Picks Made</p>
-            </div>
-            """, unsafe_allow_html=True)
-            st.progress(progress)
+        # Main Draft Layout
+        if is_user_turn and st.session_state.waiting_for_user_pick:
+            # USER'S TURN - Enhanced Interface
+            self.render_user_draft_interface(current_pick, remaining_time=self.get_remaining_time())
+        else:
+            # AI TURN - Show draft board and AI activity
+            self.render_ai_draft_interface(team_index, current_pick)
+            self.handle_ai_pick()
 
         # Handle pick logic
         if is_user_turn and st.session_state.waiting_for_user_pick:
             self.handle_user_pick()
-        else:
-            self.handle_ai_pick()
 
-        # Display recent picks and available players
-        col1, col2 = st.columns([1, 2])
+    def get_remaining_time(self):
+        """Get remaining time for current pick."""
+        if st.session_state.pick_timer_start:
+            elapsed = (datetime.now() - st.session_state.pick_timer_start).total_seconds()
+            return max(0, 60 - elapsed)
+        return 60
+
+    def render_user_draft_interface(self, current_pick, remaining_time):
+        """Render enhanced user draft interface with AI suggestions and full player board."""
+        # Timer and urgency indicator
+        timer_color = "#ff4444" if remaining_time < 10 else "#ffaa00" if remaining_time < 30 else "#44ff44"
+        urgency_class = "timer-urgent" if remaining_time < 10 else ""
+        
+        st.markdown(f"""
+        <div class="user-turn-banner {urgency_class}" style="text-align: center; padding: 2rem; margin: 1rem 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px;">
+            <h1 style="margin: 0; font-size: 2.5rem;">🎯 YOUR TURN TO PICK!</h1>
+            <div style="display: flex; justify-content: center; align-items: center; gap: 2rem; margin-top: 1rem;">
+                <div style="font-size: 2rem; color: {timer_color};">⏱️ {remaining_time:.0f}s</div>
+                <div>Pick #{current_pick} | Make your selection below</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Three-column layout: AI Suggestions | Player Board | Team Rosters
+        col1, col2, col3 = st.columns([1, 2, 1])
         
         with col1:
-            # Recent picks
-            st.markdown("### 📋 Recent Picks")
-            recent_picks = st.session_state.draft_results[-5:] if st.session_state.draft_results else []
+            self.render_ai_suggestions()
+            self.render_my_team()
             
-            for pick_info in reversed(recent_picks):
-                team_color = "#667eea" if "Your Team" in pick_info['team'] else "#666"
+        with col2:
+            self.render_draft_board(is_user_turn=True)
+            
+        with col3:
+            self.render_draft_progress()
+            self.render_recent_picks()
+    
+    def render_ai_draft_interface(self, team_index, current_pick):
+        """Render interface during AI turns."""
+        team_name = f"AI Team {team_index + 1}"
+        
+        st.markdown(f"""
+        <div class="ai-turn-banner" style="text-align: center; padding: 1.5rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%); border-radius: 15px;">
+            <h2 style="margin: 0;">🤖 {team_name} is selecting...</h2>
+            <div style="margin-top: 1rem;">
+                <div class="thinking-dots">Analyzing available players</div>
+                <div style="margin-top: 0.5rem; font-size: 0.9rem; color: rgba(255,255,255,0.7);">Pick #{current_pick} | AI making strategic choice</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Two-column layout during AI turns
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            self.render_draft_board(is_user_turn=False)
+            
+        with col2:
+            self.render_draft_progress()
+            self.render_recent_picks()
+            self.render_my_team()
+
+    def render_ai_suggestions(self):
+        """Render AI-suggested players for the user."""
+        st.markdown("""
+        <div class="ai-insight" style="margin-bottom: 1rem;">
+            <h3 style="margin-top: 0;">🤖 AI RECOMMENDATIONS</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Get AI suggestions based on user's current team and draft position
+        suggestions = self.get_ai_suggestions_for_user()
+        
+        for i, player in enumerate(suggestions[:5]):
+            suggestion_type = player.get('suggestion_type', 'VALUE')
+            reason = player.get('reason', 'Strong pick at this position')
+            
+            bg_color = {
+                'NEED': 'linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%)',
+                'VALUE': 'linear-gradient(135deg, #00ff87 0%, #60efff 100%)',
+                'BPA': 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+            }.get(suggestion_type, 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)')
+            
+            st.markdown(f"""
+            <div style="background: {bg_color}; padding: 0.8rem; margin: 0.5rem 0; border-radius: 10px; color: white; cursor: pointer;" 
+                 onclick="document.getElementById('draft_suggestion_{i}').click();">
+                <div style="font-weight: 600; display: flex; justify-content: space-between;">
+                    <span>{player['Player_Name']}</span>
+                    <span class="position-badge" style="background: rgba(255,255,255,0.2); padding: 0.2rem 0.5rem; border-radius: 5px;">{player['Position']}</span>
+                </div>
+                <div style="font-size: 0.8rem; margin-top: 0.3rem; opacity: 0.9;">
+                    {suggestion_type}: {reason}
+                </div>
+                <div style="font-size: 0.7rem; margin-top: 0.2rem; opacity: 0.8;">
+                    #{player['Overall_Rank']} Overall | VBD: {player['VBD_Value']:.1f}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Hidden button for click functionality
+            if st.button(f"Select {player['Player_Name']}", key=f"draft_suggestion_{i}", 
+                        type="primary", use_container_width=True):
+                self.make_user_pick(player)
+                st.rerun()
+
+    def render_draft_board(self, is_user_turn=False):
+        """Render the complete draft board with all available players."""
+        st.markdown("### 📋 DRAFT BOARD - All Available Players")
+        
+        # Position tabs for filtering
+        positions = ['ALL'] + sorted(st.session_state.available_players['Position'].unique())
+        
+        tab_cols = st.columns(len(positions[:6]))  # Limit to 6 tabs for layout
+        selected_pos = 'ALL'
+        
+        for i, pos in enumerate(positions[:6]):
+            with tab_cols[i]:
+                if st.button(pos, key=f"pos_tab_{pos}", use_container_width=True):
+                    selected_pos = pos
+        
+        # Search functionality
+        search_term = st.text_input("🔍 Search Players", placeholder="Player name...", key="board_search")
+        
+        # Filter players
+        filtered_players = st.session_state.available_players.copy()
+        if selected_pos != 'ALL':
+            filtered_players = filtered_players[filtered_players['Position'] == selected_pos]
+        if search_term:
+            filtered_players = filtered_players[
+                filtered_players['Player_Name'].str.contains(search_term, case=False, na=False)
+            ]
+        
+        # Sort by overall rank
+        filtered_players = filtered_players.sort_values('Overall_Rank').head(50)
+        
+        # Player board display
+        for idx, (_, player) in enumerate(filtered_players.iterrows()):
+            self.render_player_card(player, idx, is_user_turn)
+
+    def render_player_card(self, player, idx, is_user_turn):
+        """Render individual player card on the draft board."""
+        # Position-based styling
+        pos_colors = {
+            'QB': '#e74c3c', 'RB': '#3498db', 'WR': '#f39c12', 
+            'TE': '#27ae60', 'K': '#9b59b6', 'DEF': '#34495e'
+        }
+        pos_color = pos_colors.get(player['Position'], '#666')
+        
+        # VBD-based value indicator
+        vbd_class = analyzer.get_vbd_class(player['VBD_Value']) if 'analyzer' in locals() else 'vbd-medium'
+        
+        # Draft button or info display
+        if is_user_turn:
+            button_html = f"""
+            <button onclick="document.getElementById('draft_player_{idx}').click();" 
+                    style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                           color: white; border: none; padding: 0.5rem 1rem; 
+                           border-radius: 8px; cursor: pointer; font-weight: 600;
+                           transition: all 0.2s ease;" 
+                    onmouseover="this.style.transform='scale(1.05)'" 
+                    onmouseout="this.style.transform='scale(1)'">
+                📝 DRAFT
+            </button>
+            """
+        else:
+            button_html = f"""
+            <div style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.1); 
+                        border-radius: 8px; font-size: 0.8rem; text-align: center;">
+                Available
+            </div>
+            """
+        
+        st.markdown(f"""
+        <div class="player-row" style="display: flex; align-items: center; padding: 0.8rem; 
+                                     margin: 0.3rem 0; background: rgba(255,255,255,0.05); 
+                                     border-radius: 10px; border-left: 4px solid {pos_color};">
+            <div style="flex: 0 0 50px; text-align: center;">
+                <div style="background: {pos_color}; color: white; border-radius: 50%; 
+                           width: 35px; height: 35px; display: flex; align-items: center; 
+                           justify-content: center; font-weight: bold; font-size: 0.9rem;">
+                    #{player['Overall_Rank']}
+                </div>
+            </div>
+            <div style="flex: 1; margin: 0 1rem;">
+                <div style="font-weight: 600; font-size: 1.1rem;">{player['Player_Name']}</div>
+                <div style="font-size: 0.8rem; color: rgba(255,255,255,0.7); margin-top: 0.2rem;">
+                    <span style="background: {pos_color}; color: white; padding: 0.2rem 0.5rem; 
+                                border-radius: 4px; font-size: 0.7rem; margin-right: 0.5rem;">{player['Position']}</span>
+                    {player.get('Team', 'UNK')} | VBD: {player['VBD_Value']:.1f}
+                </div>
+            </div>
+            <div style="flex: 0 0 100px; text-align: center;">
+                {button_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Hidden streamlit button for actual functionality
+        if is_user_turn:
+            if st.button(f"Draft {player['Player_Name']}", key=f"draft_player_{idx}", 
+                        type="primary", use_container_width=True):
+                self.make_user_pick(player)
+                st.rerun()
+
+    def render_my_team(self):
+        """Render current user team roster."""
+        st.markdown("""
+        <div class="advanced-card" style="margin-bottom: 1rem;">
+            <h3 style="margin-top: 0;">👥 MY TEAM</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        user_picks = [pick for pick in st.session_state.draft_results if pick['team'] == 'Your Team']
+        
+        if user_picks:
+            for pick in user_picks:
+                pos_color = {
+                    'QB': '#e74c3c', 'RB': '#3498db', 'WR': '#f39c12', 
+                    'TE': '#27ae60', 'K': '#9b59b6', 'DEF': '#34495e'
+                }.get(pick['position'], '#666')
+                
                 st.markdown(f"""
-                <div style="padding: 0.5rem; margin: 0.3rem 0; background: rgba(255,255,255,0.05); border-left: 3px solid {team_color}; border-radius: 8px;">
-                    <div style="font-weight: 600;">{pick_info['player']}</div>
-                    <div style="font-size: 0.8rem; color: rgba(255,255,255,0.7);">
-                        Pick #{pick_info['pick']} - {pick_info['team']} - {pick_info['position']}
+                <div style="padding: 0.5rem; margin: 0.3rem 0; background: rgba(255,255,255,0.05); 
+                           border-left: 3px solid {pos_color}; border-radius: 6px;">
+                    <div style="font-weight: 600; font-size: 0.9rem;">{pick['player']}</div>
+                    <div style="font-size: 0.7rem; color: rgba(255,255,255,0.7);">
+                        R{pick['round']} #{pick['pick']} | {pick['position']} | {pick['team_name']}
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
+        else:
+            st.markdown("<div style='text-align: center; color: rgba(255,255,255,0.5); padding: 1rem;'>No picks yet</div>", unsafe_allow_html=True)
 
-        with col2:
-            # Available players for user selection
-            if is_user_turn and st.session_state.waiting_for_user_pick:
-                st.markdown("### 🎯 Available Players - Make Your Pick!")
-                
-                # Quick filters for user
-                filter_col1, filter_col2 = st.columns(2)
-                with filter_col1:
-                    pos_filter = st.selectbox("Position Filter", 
-                                            ['All'] + sorted(st.session_state.available_players['Position'].unique()),
-                                            key="user_pos_filter")
-                with filter_col2:
-                    search_player = st.text_input("Search Player", placeholder="Enter player name...", key="user_search")
+    def render_recent_picks(self):
+        """Render recent draft picks."""
+        st.markdown("""
+        <div class="advanced-card" style="margin-bottom: 1rem;">
+            <h3 style="margin-top: 0;">📋 RECENT PICKS</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        recent_picks = st.session_state.draft_results[-8:] if st.session_state.draft_results else []
+        
+        for pick_info in reversed(recent_picks):
+            team_color = "#667eea" if "Your Team" in pick_info['team'] else "#666"
+            
+            st.markdown(f"""
+            <div style="padding: 0.5rem; margin: 0.3rem 0; background: rgba(255,255,255,0.05); 
+                       border-left: 3px solid {team_color}; border-radius: 6px;">
+                <div style="font-weight: 600; font-size: 0.9rem;">{pick_info['player']}</div>
+                <div style="font-size: 0.7rem; color: rgba(255,255,255,0.7);">
+                    #{pick_info['pick']} {pick_info['team']} | {pick_info['position']}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-                # Filter available players
-                filtered_players = st.session_state.available_players.copy()
-                if pos_filter != 'All':
-                    filtered_players = filtered_players[filtered_players['Position'] == pos_filter]
-                if search_player:
-                    filtered_players = filtered_players[
-                        filtered_players['Player_Name'].str.contains(search_player, case=False, na=False)
-                    ]
+    def render_draft_progress(self):
+        """Render draft progress and statistics."""
+        current_pick = st.session_state.current_pick_number
+        max_picks = st.session_state.draft_rounds * 10
+        progress = (current_pick - 1) / max_picks
+        
+        st.markdown("""
+        <div class="advanced-card" style="margin-bottom: 1rem;">
+            <h3 style="margin-top: 0;">📊 DRAFT PROGRESS</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.progress(progress)
+        
+        st.markdown(f"""
+        <div style="text-align: center; padding: 0.5rem;">
+            <div style="font-size: 1.2rem; font-weight: 600;">{current_pick - 1} / {max_picks}</div>
+            <div style="font-size: 0.8rem; color: rgba(255,255,255,0.7);">Picks Completed</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Position breakdown
+        if st.session_state.draft_results:
+            pos_counts = {}
+            for pick in st.session_state.draft_results:
+                pos = pick['position']
+                pos_counts[pos] = pos_counts.get(pos, 0) + 1
+            
+            st.markdown("**Positions Drafted:**")
+            for pos, count in sorted(pos_counts.items()):
+                st.markdown(f"• {pos}: {count}")
 
-                # Display top available players for selection
-                top_available = filtered_players.head(20)
-                
-                for idx, (_, player) in enumerate(top_available.iterrows()):
-                    col_a, col_b, col_c = st.columns([3, 1, 1])
-                    
-                    with col_a:
-                        if st.button(f"📝 DRAFT {player['Player_Name']}", 
-                                   key=f"draft_btn_{idx}",
-                                   use_container_width=True,
-                                   type="primary"):
-                            self.make_user_pick(player)
-                            st.rerun()
-                    
-                    with col_b:
-                        st.markdown(f"""
-                        <div style="text-align: center;">
-                            <span class="position-badge pos-{player['Position'].lower()}">{player['Position']}</span><br>
-                            <small>#{player['Overall_Rank']} Overall</small>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with col_c:
-                        vbd_class = analyzer.get_vbd_class(player['VBD_Value'])
-                        st.markdown(f"""
-                        <div style="text-align: center;">
-                            <div class="vbd-badge {vbd_class}">{player['VBD_Value']:.1f}</div>
-                            <small>{player.get('Team', 'UNK')}</small>
-                        </div>
-                        """, unsafe_allow_html=True)
-            else:
-                # Show available players for context
-                st.markdown("### 📊 Available Players")
-                top_available = st.session_state.available_players.head(15)
-                
-                for _, player in top_available.iterrows():
-                    st.markdown(f"""
-                    <div style="display: flex; justify-content: space-between; padding: 0.5rem; margin: 0.2rem 0; background: rgba(255,255,255,0.03); border-radius: 6px;">
-                        <span>{player['Player_Name']} ({player.get('Team', 'UNK')})</span>
-                        <span>
-                            <span class="position-badge pos-{player['Position'].lower()}" style="font-size: 0.7rem; padding: 0.2rem 0.4rem;">{player['Position']}</span>
-                            #{player['Overall_Rank']} | VBD: {player['VBD_Value']:.1f}
-                        </span>
-                    </div>
-                    """, unsafe_allow_html=True)
+    def get_ai_suggestions_for_user(self):
+        """Generate AI suggestions based on user's team composition and draft strategy."""
+        user_picks = [pick for pick in st.session_state.draft_results if pick['team'] == 'Your Team']
+        available = st.session_state.available_players.copy()
+        
+        # Analyze user's current roster
+        user_positions = {}
+        for pick in user_picks:
+            pos = pick['position']
+            user_positions[pos] = user_positions.get(pos, 0) + 1
+        
+        suggestions = []
+        current_round = ((st.session_state.current_pick_number - 1) // 10) + 1
+        
+        # Best Player Available (BPA)
+        bpa = available.head(1).iloc[0] if len(available) > 0 else None
+        if bpa is not None:
+            suggestions.append({
+                **bpa.to_dict(),
+                'suggestion_type': 'BPA',
+                'reason': 'Highest ranked available player'
+            })
+        
+        # Position of Need
+        needed_positions = []
+        if user_positions.get('QB', 0) == 0 and current_round >= 4:
+            needed_positions.append('QB')
+        if user_positions.get('RB', 0) < 2 and current_round <= 8:
+            needed_positions.append('RB')
+        if user_positions.get('WR', 0) < 2 and current_round <= 10:
+            needed_positions.append('WR')
+        if user_positions.get('TE', 0) == 0 and current_round >= 6:
+            needed_positions.append('TE')
+        
+        for pos in needed_positions[:2]:
+            pos_players = available[available['Position'] == pos]
+            if len(pos_players) > 0:
+                best_pos = pos_players.iloc[0]
+                suggestions.append({
+                    **best_pos.to_dict(),
+                    'suggestion_type': 'NEED',
+                    'reason': f'Fill {pos} position need'
+                })
+        
+        # Value Picks (high VBD relative to rank)
+        value_threshold = available['VBD_Value'].quantile(0.75) if len(available) > 20 else 0
+        value_picks = available[available['VBD_Value'] >= value_threshold].head(3)
+        
+        for _, player in value_picks.iterrows():
+            if len(suggestions) < 5:
+                suggestions.append({
+                    **player.to_dict(),
+                    'suggestion_type': 'VALUE',
+                    'reason': 'High value based on VBD analysis'
+                })
+        
+        return suggestions[:5]
 
     def handle_user_pick(self):
         """Handle when it's the user's turn to pick."""
