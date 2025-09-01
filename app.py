@@ -1272,6 +1272,23 @@ class DraftSimulator:
         self.draft_active = False
         self.pick_timer = 60  # 60 seconds per pick
         self.start_time = None
+        
+        # 12-player roster requirements
+        self.roster_requirements = {
+            'QB': 1,
+            'WR': 2,  # WR1, WR2
+            'RB': 2,  # RB1, RB2
+            'TE': 1,
+            'FLEX': 1,  # WR/RB/TE
+            'K': 1,
+            'DEF': 1,
+            'BENCH': 3  # Any position
+        }
+        
+        # Draft order for each position
+        self.position_draft_order = [
+            'QB', 'WR', 'WR', 'RB', 'RB', 'TE', 'FLEX', 'K', 'DEF', 'BENCH', 'BENCH', 'BENCH'
+        ]
 
     def get_pick_order(self, pick_number: int) -> int:
         """Get the team index for snake draft."""
@@ -1283,7 +1300,17 @@ class DraftSimulator:
         else:  # Even rounds go 10-1
             return 10 - pick_in_round
 
-    def ai_draft_pick(self, team_index: int, available_players: pd.DataFrame) -> dict:
+    def get_roster_slot_for_pick(self, pick_num: int, team_index: int) -> str:
+        """Get the roster slot being filled for this pick."""
+        team_pick_num = ((pick_num - 1) // 10) * 10 + (team_index + 1)
+        team_round = ((team_pick_num - 1) // 10) + 1
+        
+        if team_round <= len(self.position_draft_order):
+            return self.position_draft_order[team_round - 1]
+        else:
+            return 'BENCH'
+    
+    def ai_draft_pick(self, team_index: int, available_players: pd.DataFrame, pick_num: int = None) -> dict:
         """AI logic for drafting players."""
         # Ensure team_index is within valid range for AI teams (0-8)
         if team_index < 0 or team_index >= 9:
@@ -1297,60 +1324,87 @@ class DraftSimulator:
             pos = player.get('Position', 'UNKNOWN')
             position_counts[pos] = position_counts.get(pos, 0) + 1
 
-        # AI draft strategy based on round and team needs
-        round_num = ((self.current_pick - 1) // 10) + 1
-
-        # Early rounds (1-3): Best available with slight position preference
-        if round_num <= 3:
-            # Prefer RB/WR in early rounds, avoid K/DEF
-            exclude_positions = ['K', 'DEF']
-            if round_num >= 3 and position_counts.get('QB', 0) == 0:
-                # Might grab QB in round 3
-                pass
-            
-            candidates = available_players[~available_players['Position'].isin(exclude_positions)]
-            if len(candidates) == 0:
-                candidates = available_players
-
-        # Mid rounds (4-10): Fill needs
-        elif round_num <= 10:
-            needed_positions = []
-            
-            if position_counts.get('QB', 0) == 0 and round_num >= 6:
-                needed_positions.append('QB')
-            if position_counts.get('TE', 0) == 0 and round_num >= 7:
-                needed_positions.append('TE')
-            
-            # Avoid K/DEF until very late
-            exclude_positions = ['K', 'DEF'] if round_num < 9 else []
-            
-            if needed_positions:
-                candidates = available_players[
-                    (available_players['Position'].isin(needed_positions)) &
-                    (~available_players['Position'].isin(exclude_positions))
-                ]
-                if len(candidates) == 0:
-                    candidates = available_players[~available_players['Position'].isin(exclude_positions)]
-            else:
-                candidates = available_players[~available_players['Position'].isin(exclude_positions)]
-
-        # Late rounds (11+): Fill remaining needs, K/DEF
+        # Get the current roster slot being filled
+        team_picks = len(team_roster)
+        current_round = team_picks + 1
+        
+        if current_round <= len(self.position_draft_order):
+            target_slot = self.position_draft_order[current_round - 1]
         else:
-            needed_positions = []
-            
-            if position_counts.get('K', 0) == 0:
-                needed_positions.append('K')
-            if position_counts.get('DEF', 0) == 0:
-                needed_positions.append('DEF')
-            if position_counts.get('QB', 0) == 0:
-                needed_positions.append('QB')
-            if position_counts.get('TE', 0) == 0:
-                needed_positions.append('TE')
+            target_slot = 'BENCH'
 
-            if needed_positions:
-                candidates = available_players[available_players['Position'].isin(needed_positions)]
+        # AI draft strategy based on roster slot and team construction
+        if target_slot == 'QB':
+            # Round 1: Must draft QB
+            candidates = available_players[available_players['Position'] == 'QB']
+            if len(candidates) == 0:
+                candidates = available_players  # Fallback
+                
+        elif target_slot == 'WR':
+            # Rounds 2-3: Draft WRs
+            candidates = available_players[available_players['Position'] == 'WR']
+            if len(candidates) == 0:
+                candidates = available_players[available_players['Position'].isin(['WR', 'RB', 'TE'])]
+                
+        elif target_slot == 'RB':
+            # Rounds 4-5: Draft RBs
+            candidates = available_players[available_players['Position'] == 'RB']
+            if len(candidates) == 0:
+                candidates = available_players[available_players['Position'].isin(['RB', 'WR', 'TE'])]
+                
+        elif target_slot == 'TE':
+            # Round 6: Draft TE
+            candidates = available_players[available_players['Position'] == 'TE']
+            if len(candidates) == 0:
+                candidates = available_players[available_players['Position'].isin(['TE', 'WR', 'RB'])]
+                
+        elif target_slot == 'FLEX':
+            # Round 7: FLEX position (WR/RB/TE)
+            flex_positions = ['WR', 'RB', 'TE']
+            candidates = available_players[available_players['Position'].isin(flex_positions)]
+            
+            # AI strategy for FLEX: prefer position with lowest current total on roster
+            flex_values = {}
+            for pos in flex_positions:
+                pos_total = sum(p.get('VBD_Value', 0) for p in team_roster if p.get('Position') == pos)
+                flex_values[pos] = pos_total
+            
+            # Prefer position with lowest current value (needs strengthening)
+            weakest_flex_pos = min(flex_values.items(), key=lambda x: x[1])[0]
+            preferred_candidates = candidates[candidates['Position'] == weakest_flex_pos]
+            
+            if len(preferred_candidates) > 0:
+                candidates = preferred_candidates
+                
+        elif target_slot == 'K':
+            # Round 8: Draft Kicker
+            candidates = available_players[available_players['Position'] == 'K']
+            if len(candidates) == 0:
+                candidates = available_players  # Fallback
+                
+        elif target_slot == 'DEF':
+            # Round 9: Draft Defense
+            candidates = available_players[available_players['Position'] == 'DEF']
+            if len(candidates) == 0:
+                candidates = available_players  # Fallback
+                
+        else:  # BENCH rounds (10-12)
+            # Bench strategy: Best available or fill weaknesses
+            # Calculate position strength
+            position_strength = {}
+            for pos in ['QB', 'RB', 'WR', 'TE']:
+                pos_players = [p for p in team_roster if p.get('Position') == pos]
+                avg_vbd = sum(p.get('VBD_Value', 0) for p in pos_players) / max(len(pos_players), 1)
+                position_strength[pos] = avg_vbd
+            
+            # Target weakest position for bench depth
+            if position_strength:
+                weakest_pos = min(position_strength.items(), key=lambda x: x[1])[0]
+                candidates = available_players[available_players['Position'] == weakest_pos]
+                
+                # If no players available in weakest position, go best available
                 if len(candidates) == 0:
-                    candidates = available_players
+                    candidates = available_players[available_players['Position'].isin(['RB', 'WR', 'TE', 'QB'])]
             else:
                 candidates = available_players
 
@@ -1367,11 +1421,11 @@ class DraftSimulator:
         return top_candidates.iloc[selected_idx].to_dict()
 
     def simulate_draft(self, user_picks: List[int]) -> List[dict]:
-        """Simulate a full draft."""
+        """Simulate a full 12-round draft."""
         draft_results = []
         available_players = self.players_data.copy().sort_values('Overall_Rank')
 
-        for pick_num in range(1, 161):  # 16 rounds, 10 teams
+        for pick_num in range(1, 121):  # 12 rounds, 10 teams
             team_index = self.get_pick_order(pick_num)
             
             if team_index == 0 and pick_num in user_picks:
@@ -1382,7 +1436,7 @@ class DraftSimulator:
                 if len(available_players) > 0:
                     # Correctly map team_index to AI teams (team 0 is user, teams 1-9 map to ai_teams 0-8)
                     ai_team_index = team_index - 1 if team_index > 0 else 8
-                    ai_pick = self.ai_draft_pick(ai_team_index, available_players)
+                    ai_pick = self.ai_draft_pick(ai_team_index, available_players, pick_num)
                     if ai_pick:
                         draft_results.append({
                             'pick': pick_num,
@@ -1392,7 +1446,8 @@ class DraftSimulator:
                             'position': ai_pick['Position'],
                             'team_name': ai_pick.get('Team', 'Unknown'),
                             'vbd': ai_pick.get('VBD_Value', 0),
-                            'overall_rank': ai_pick.get('Overall_Rank', 999)
+                            'overall_rank': ai_pick.get('Overall_Rank', 999),
+                            'roster_slot': self.get_roster_slot_for_pick(pick_num, team_index)
                         })
 
                         # Remove drafted player
@@ -1461,6 +1516,13 @@ class DraftSimulator:
         if is_user_turn and st.session_state.waiting_for_user_pick:
             self.handle_user_pick()
 
+    def get_user_roster_slot(self, pick_number: int) -> str:
+        """Get the roster slot for the user's pick number."""
+        if pick_number <= len(self.position_draft_order):
+            return self.position_draft_order[pick_number - 1]
+        else:
+            return 'BENCH'
+    
     def get_remaining_time(self):
         """Get remaining time for current pick."""
         if st.session_state.pick_timer_start:
@@ -1892,49 +1954,44 @@ class DraftSimulator:
                 'reason': bpa_reason
             })
         
-        # Strategic Position Needs with advanced logic
+        # Strategic Position Needs based on 12-player roster format
         needed_positions = []
+        expected_slot = self.get_user_roster_slot(picks_made + 1) if picks_made < 12 else 'BENCH'
         
-        # QB strategy
-        if user_positions.get('QB', 0) == 0:
-            if current_round <= 6:
-                needed_positions.append(('QB', 'Secure your starting QB before tier drop'))
-            elif current_round <= 12:
-                needed_positions.append(('QB', 'Late-round QB with streaming potential'))
+        # Round-specific strategy based on roster format
+        if current_round == 1 and user_positions.get('QB', 0) == 0:
+            needed_positions.append(('QB', 'Round 1: Secure elite QB foundation'))
         
-        # RB scarcity strategy
-        if user_positions.get('RB', 0) < 2:
-            if current_round <= 3:
-                needed_positions.append(('RB', 'Elite RB1 - position scarcity at premium'))
-            elif current_round <= 8:
-                needed_positions.append(('RB', 'RB2 depth before dead zone'))
+        elif current_round in [2, 3] and user_positions.get('WR', 0) < (current_round - 1):
+            needed_positions.append(('WR', f'Round {current_round}: Build WR corps - need {2 - user_positions.get("WR", 0)} more'))
+        
+        elif current_round in [4, 5] and user_positions.get('RB', 0) < (current_round - 3):
+            needed_positions.append(('RB', f'Round {current_round}: Secure RB depth - need {2 - user_positions.get("RB", 0)} more'))
+        
+        elif current_round == 6 and user_positions.get('TE', 0) == 0:
+            needed_positions.append(('TE', 'Round 6: Fill TE requirement'))
+        
+        elif current_round == 7:
+            # FLEX round - best available WR/RB/TE
+            flex_options = ['WR', 'RB', 'TE']
+            current_flex_total = sum(user_positions.get(pos, 0) for pos in flex_options)
+            if current_flex_total < 6:  # Should have 2WR + 2RB + 1TE + 1FLEX = 6 total
+                needed_positions.append(('FLEX', 'Round 7: FLEX position - best WR/RB/TE available'))
+        
+        elif current_round == 8 and user_positions.get('K', 0) == 0:
+            needed_positions.append(('K', 'Round 8: Draft kicker'))
+        
+        elif current_round == 9 and user_positions.get('DEF', 0) == 0:
+            needed_positions.append(('DEF', 'Round 9: Draft defense'))
+        
+        elif current_round >= 10:
+            # Bench rounds - target upside and depth
+            if user_positions.get('RB', 0) < 4:
+                needed_positions.append(('RB', 'Bench: RB handcuff or lottery ticket'))
+            elif user_positions.get('WR', 0) < 4:
+                needed_positions.append(('WR', 'Bench: WR depth for bye weeks'))
             else:
-                needed_positions.append(('RB', 'Handcuff or lottery ticket RB'))
-        elif user_positions.get('RB', 0) == 2 and total_rb_value < 30:
-            needed_positions.append(('RB', 'Upgrade RB corps - current value too low'))
-        
-        # WR depth strategy
-        if user_positions.get('WR', 0) < 2:
-            if current_round <= 5:
-                needed_positions.append(('WR', 'WR1 with target share and upside'))
-            else:
-                needed_positions.append(('WR', 'WR depth in deep position'))
-        elif user_positions.get('WR', 0) < 4 and current_round >= 6:
-            needed_positions.append(('WR', 'Build WR depth - injury insurance'))
-        
-        # TE premium strategy
-        if user_positions.get('TE', 0) == 0:
-            if current_round >= 4 and current_round <= 8 and not has_elite_te:
-                needed_positions.append(('TE', 'Elite TE provides positional advantage'))
-            elif current_round >= 9:
-                needed_positions.append(('TE', 'Streaming TE option'))
-        
-        # Defense/Kicker timing
-        if current_round >= 14:
-            if user_positions.get('DEF', 0) == 0:
-                needed_positions.append(('DEF', 'Stream defenses or target elite unit'))
-            if user_positions.get('K', 0) == 0:
-                needed_positions.append(('K', 'Final round kicker or waiver pickup'))
+                needed_positions.append(('BPA', 'Bench: Best available upside player'))
         
         # Add position need suggestions
         for pos, reason in needed_positions[:3]:
@@ -2031,6 +2088,10 @@ class DraftSimulator:
         else:
             player_dict = player_row
         
+        # Calculate roster slot for this pick
+        user_picks_count = len([p for p in st.session_state.draft_results if p['team'] == 'Your Team'])
+        roster_slot = self.get_user_roster_slot(user_picks_count + 1)
+        
         # Add pick to results with safe data access
         pick_info = {
             'pick': st.session_state.current_pick_number,
@@ -2040,7 +2101,8 @@ class DraftSimulator:
             'position': str(player_dict.get('Position', 'UNKNOWN')),
             'team_name': str(player_dict.get('Team', 'Unknown')),
             'vbd': float(player_dict.get('VBD_Value', 0)),
-            'overall_rank': int(player_dict.get('Overall_Rank', 999))
+            'overall_rank': int(player_dict.get('Overall_Rank', 999)),
+            'roster_slot': roster_slot
         }
         
         st.session_state.draft_results.append(pick_info)
@@ -2060,8 +2122,8 @@ class DraftSimulator:
         st.session_state.waiting_for_user_pick = False
         st.session_state.pick_timer_start = datetime.now()
         
-        # Check if draft is complete
-        max_picks = st.session_state.draft_rounds * 10
+        # Check if draft is complete (12 rounds * 10 teams = 120 picks)
+        max_picks = 12 * 10
         if st.session_state.current_pick_number > max_picks:
             st.session_state.draft_completed = True
         
@@ -2187,12 +2249,12 @@ class DraftSimulator:
             self.display_full_draft_board()
 
     def calculate_draft_grade(self, user_team: List[dict]) -> dict:
-        """Calculate comprehensive AI draft grade."""
-        if not user_team:
+        """Calculate comprehensive AI draft grade for 12-player roster."""
+        if not user_team or len(user_team) != 12:
             return {
                 'score': 0,
                 'letter_grade': 'F',
-                'summary': 'No players drafted',
+                'summary': 'Incomplete draft - 12 players required',
                 'breakdown': {}
             }
 
@@ -2200,47 +2262,98 @@ class DraftSimulator:
         total_vbd = sum(player.get('VBD_Value', 0) for player in user_team)
         avg_vbd = total_vbd / len(user_team) if user_team else 0
         
-        # Position analysis
+        # Position analysis with 12-player roster requirements
         position_counts = {}
         position_vbd = {}
-        for player in user_team:
+        starter_vbd = 0  # VBD from starting lineup (first 9 picks)
+        bench_vbd = 0    # VBD from bench (last 3 picks)
+        
+        for idx, player in enumerate(user_team):
             pos = player.get('Position', 'UNKNOWN')
             position_counts[pos] = position_counts.get(pos, 0) + 1
             position_vbd[pos] = position_vbd.get(pos, 0) + player.get('VBD_Value', 0)
-
-        # Scoring components
-        vbd_score = min(35, (total_vbd / 100) * 35)  # 35 points max for VBD
-        
-        # Position balance score (25 points max)
-        ideal_positions = {'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'K': 1, 'DEF': 1}
-        balance_score = 0
-        for pos, ideal_count in ideal_positions.items():
-            actual_count = position_counts.get(pos, 0)
-            if actual_count >= ideal_count:
-                balance_score += (25 / len(ideal_positions))
-            else:
-                balance_score += (actual_count / ideal_count) * (25 / len(ideal_positions))
-
-        # Value picks score (20 points max)
-        value_picks = sum(1 for player in user_team if player.get('Value_Pick', False))
-        value_score = min(20, (value_picks / max(1, len(user_team))) * 40)
-
-        # Draft timing score (20 points max)
-        timing_score = 20  # Base score, deduct for bad picks
-        for player in user_team:
-            pos = player.get('Position', 'UNKNOWN')
-            overall_rank = player.get('Overall_Rank', 999)
             
-            # Penalize reaching for players or bad timing
-            if pos in ['K', 'DEF'] and overall_rank < 150:
-                timing_score -= 5  # Penalty for drafting K/DEF too early
-            elif pos == 'QB' and overall_rank > 50 and len([p for p in user_team if p.get('Position') == 'QB']) == 1:
-                timing_score -= 3  # Penalty for waiting too long on QB
+            # Separate starter vs bench value
+            if idx < 9:  # First 9 picks are starters
+                starter_vbd += player.get('VBD_Value', 0)
+            else:  # Last 3 picks are bench
+                bench_vbd += player.get('VBD_Value', 0)
 
-        timing_score = max(0, timing_score)
+        # Enhanced scoring components for 12-player format
+        
+        # 1. VBD Score (30 points max) - prioritize starter value
+        starter_vbd_score = min(25, (starter_vbd / 120) * 25)  # Starters worth more
+        bench_vbd_score = min(5, (bench_vbd / 30) * 5)        # Bench depth bonus
+        vbd_score = starter_vbd_score + bench_vbd_score
+        
+        # 2. Roster Construction Score (25 points max)
+        required_positions = {'QB': 1, 'WR': 2, 'RB': 2, 'TE': 1, 'K': 1, 'DEF': 1}
+        construction_score = 0
+        
+        for pos, required in required_positions.items():
+            actual = position_counts.get(pos, 0)
+            if actual >= required:
+                construction_score += (25 / len(required_positions))
+            else:
+                construction_score += (actual / required) * (25 / len(required_positions))
+        
+        # Bonus for FLEX diversity (having different position types)
+        flex_players = user_team[6:7] if len(user_team) > 6 else []  # 7th pick is FLEX
+        flex_positions = set()
+        for player in flex_players:
+            pos = player.get('Position', 'UNKNOWN')
+            if pos in ['WR', 'RB', 'TE']:
+                flex_positions.add(pos)
+        
+        if len(flex_positions) > 0:
+            construction_score += 2  # Bonus for proper FLEX usage
+        
+        # 3. Value and Strategy Score (25 points max)
+        value_picks = sum(1 for player in user_team if player.get('Value_Pick', False))
+        early_value_picks = sum(1 for i, player in enumerate(user_team[:6]) if player.get('Value_Pick', False))
+        
+        value_strategy_score = min(15, (value_picks / 12) * 30)  # Overall value identification
+        early_strategy_score = min(10, (early_value_picks / 6) * 20)  # Early round value
+        strategy_score = value_strategy_score + early_strategy_score
+        
+        # 4. Draft Order Execution Score (20 points max)
+        execution_score = 20
+        
+        # Check if positions were drafted in reasonable order
+        position_order_check = {
+            0: 'QB',     # Round 1: QB
+            1: 'WR',     # Round 2: WR1  
+            2: 'WR',     # Round 3: WR2
+            3: 'RB',     # Round 4: RB1
+            4: 'RB',     # Round 5: RB2
+            5: 'TE',     # Round 6: TE
+            6: ['WR', 'RB', 'TE'],  # Round 7: FLEX
+            7: 'K',      # Round 8: K
+            8: 'DEF'     # Round 9: DEF
+        }
+        
+        for pick_idx, expected_pos in position_order_check.items():
+            if pick_idx < len(user_team):
+                actual_pos = user_team[pick_idx].get('Position', 'UNKNOWN')
+                
+                if isinstance(expected_pos, list):
+                    if actual_pos not in expected_pos:
+                        execution_score -= 2  # Penalty for wrong FLEX position
+                else:
+                    if actual_pos != expected_pos:
+                        execution_score -= 3  # Penalty for wrong position
+        
+        # Penalty for drafting K/DEF too early
+        for idx in range(7):  # First 7 picks shouldn't be K/DEF
+            if idx < len(user_team):
+                pos = user_team[idx].get('Position', 'UNKNOWN')
+                if pos in ['K', 'DEF']:
+                    execution_score -= 5
+        
+        execution_score = max(0, execution_score)
 
         # Calculate final score
-        final_score = vbd_score + balance_score + value_score + timing_score
+        final_score = vbd_score + construction_score + strategy_score + execution_score
 
         # Letter grade
         if final_score >= 90:
@@ -2286,35 +2399,49 @@ class DraftSimulator:
             'summary': summary,
             'breakdown': {
                 'vbd_score': vbd_score,
-                'balance_score': balance_score,
-                'value_score': value_score,
-                'timing_score': timing_score,
+                'construction_score': construction_score,
+                'strategy_score': strategy_score,
+                'execution_score': execution_score,
                 'total_vbd': total_vbd,
+                'starter_vbd': starter_vbd,
+                'bench_vbd': bench_vbd,
                 'avg_vbd': avg_vbd,
-                'value_picks': value_picks
+                'value_picks': value_picks,
+                'early_value_picks': early_value_picks
             }
         }
 
     def display_user_team_analysis(self, user_team: List[dict], draft_grade: dict):
-        """Display detailed user team analysis."""
-        st.markdown("### 🏆 Your Final Team")
+        """Display detailed user team analysis for 12-player roster."""
+        st.markdown("### 🏆 Your Final 12-Player Team")
         
         if not user_team:
             st.info("No players drafted yet.")
             return
 
-        # Team composition
+        # Team composition with roster slots
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            st.markdown("#### 📋 Roster Breakdown")
+            st.markdown("#### 📋 Starting Lineup")
             
-            for idx, player in enumerate(user_team):
-                pick_round = ((idx) // 10) + 1 if idx < len(user_team) else 1
+            # Display starters (first 9 picks) with proper roster slots
+            for idx, player in enumerate(user_team[:9]):
+                roster_slot = self.get_user_roster_slot(idx + 1)
+                pick_round = idx + 1
+                
+                # Roster slot styling
+                slot_colors = {
+                    'QB': '#e74c3c', 'WR': '#f39c12', 'RB': '#3498db', 
+                    'TE': '#27ae60', 'FLEX': '#9b59b6', 'K': '#34495e', 'DEF': '#7f8c8d'
+                }
+                slot_color = slot_colors.get(roster_slot, '#667eea')
                 
                 st.markdown(f"""
-                <div class="draft-pick" style="border-left: 4px solid #667eea;">
-                    <div class="pick-number">R{pick_round}</div>
+                <div class="draft-pick" style="border-left: 4px solid {slot_color};">
+                    <div style="background: {slot_color}; color: white; padding: 0.5rem; border-radius: 8px; font-weight: 700; min-width: 80px; text-align: center; margin-right: 1rem;">
+                        {roster_slot}
+                    </div>
                     <div style="flex-grow: 1;">
                         <div style="font-weight: 600; font-size: 1.1rem;">{player['Player_Name']}</div>
                         <div style="color: rgba(255,255,255,0.8); font-size: 0.9rem;">
@@ -2324,31 +2451,74 @@ class DraftSimulator:
                             <span style="margin-left: 0.5rem;">Rank: #{player.get('Overall_Rank', 999)}</span>
                         </div>
                     </div>
-                    {'<div style="color: #00ff87;">💎 VALUE</div>' if player.get('Value_Pick', False) else ''}
+                    <div style="text-align: right; color: rgba(255,255,255,0.6);">
+                        Round {pick_round}
+                        {'<div style="color: #00ff87; font-size: 0.8rem;">💎 VALUE</div>' if player.get('Value_Pick', False) else ''}
+                    </div>
                 </div>
                 """, unsafe_allow_html=True)
+            
+            # Display bench players
+            if len(user_team) > 9:
+                st.markdown("#### 🪑 Bench Players")
+                
+                for idx, player in enumerate(user_team[9:]):
+                    bench_round = idx + 10
+                    
+                    st.markdown(f"""
+                    <div class="draft-pick" style="border-left: 4px solid #95a5a6;">
+                        <div style="background: #95a5a6; color: white; padding: 0.5rem; border-radius: 8px; font-weight: 700; min-width: 80px; text-align: center; margin-right: 1rem;">
+                            BENCH
+                        </div>
+                        <div style="flex-grow: 1;">
+                            <div style="font-weight: 600; font-size: 1.1rem;">{player['Player_Name']}</div>
+                            <div style="color: rgba(255,255,255,0.8); font-size: 0.9rem;">
+                                <span class="position-badge pos-{player['Position'].lower()}">{player['Position']}</span>
+                                <span class="team-badge">{player.get('Team', 'UNK')}</span>
+                                <span style="margin-left: 0.5rem;">VBD: {player.get('VBD_Value', 0):.1f}</span>
+                                <span style="margin-left: 0.5rem;">Rank: #{player.get('Overall_Rank', 999)}</span>
+                            </div>
+                        </div>
+                        <div style="text-align: right; color: rgba(255,255,255,0.6);">
+                            Round {bench_round}
+                            {'<div style="color: #00ff87; font-size: 0.8rem;">💎 VALUE</div>' if player.get('Value_Pick', False) else ''}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
         with col2:
-            st.markdown("#### 📊 Team Stats")
+            st.markdown("#### 📊 12-Player Team Stats")
             
-            # Position counts
+            # Roster verification
+            required_positions = {'QB': 1, 'WR': 2, 'RB': 2, 'TE': 1, 'K': 1, 'DEF': 1}
             position_counts = {}
             for player in user_team:
                 pos = player.get('Position', 'UNKNOWN')
                 position_counts[pos] = position_counts.get(pos, 0) + 1
 
-            for pos, count in position_counts.items():
-                st.markdown(f"**{pos}:** {count} players")
+            st.markdown("**Roster Check:**")
+            for pos, required in required_positions.items():
+                actual = position_counts.get(pos, 0)
+                status = "✅" if actual >= required else "❌"
+                st.markdown(f"{status} **{pos}:** {actual}/{required}")
+
+            # FLEX and Bench analysis
+            flex_count = sum(1 for p in user_team if p.get('Position') in ['WR', 'RB', 'TE']) - 5  # Subtract required WR/RB/TE
+            st.markdown(f"🔄 **FLEX Options:** {max(0, flex_count)}")
+            st.markdown(f"🪑 **Bench Depth:** {len(user_team) - 9}")
 
             st.markdown("---")
             
-            # Key metrics
+            # Enhanced metrics for 12-player format
             total_vbd = sum(player.get('VBD_Value', 0) for player in user_team)
+            starter_vbd = sum(player.get('VBD_Value', 0) for player in user_team[:9])
+            bench_vbd = sum(player.get('VBD_Value', 0) for player in user_team[9:])
             value_picks = sum(1 for player in user_team if player.get('Value_Pick', False))
             
-            st.metric("Total VBD Score", f"{total_vbd:.1f}")
-            st.metric("Value Picks", value_picks)
-            st.metric("Team Size", len(user_team))
+            st.metric("Starter VBD", f"{starter_vbd:.1f}")
+            st.metric("Bench VBD", f"{bench_vbd:.1f}")
+            st.metric("Total VBD", f"{total_vbd:.1f}")
+            st.metric("Value Picks", f"{value_picks}/12")
 
     def display_draft_grade_breakdown(self, draft_grade: dict):
         """Display detailed breakdown of draft grade."""
@@ -2361,15 +2531,15 @@ class DraftSimulator:
         with col1:
             st.markdown("#### 🎯 Scoring Components")
             
-            # Score breakdown chart
-            components = ['VBD Score', 'Position Balance', 'Value Picks', 'Draft Timing']
+            # Score breakdown chart for 12-player format
+            components = ['VBD Score', 'Roster Construction', 'Strategy & Value', 'Draft Execution']
             scores = [
                 breakdown['vbd_score'],
-                breakdown['balance_score'], 
-                breakdown['value_score'],
-                breakdown['timing_score']
+                breakdown['construction_score'], 
+                breakdown['strategy_score'],
+                breakdown['execution_score']
             ]
-            max_scores = [35, 25, 20, 20]
+            max_scores = [30, 25, 25, 20]
             
             fig_breakdown = go.Figure()
             
@@ -2400,16 +2570,18 @@ class DraftSimulator:
         with col2:
             st.markdown("#### 📈 Performance Metrics")
             
-            st.metric("VBD Score", f"{breakdown['vbd_score']:.1f}/35")
-            st.metric("Position Balance", f"{breakdown['balance_score']:.1f}/25")
-            st.metric("Value Identification", f"{breakdown['value_score']:.1f}/20")
-            st.metric("Draft Timing", f"{breakdown['timing_score']:.1f}/20")
+            st.metric("VBD Score", f"{breakdown['vbd_score']:.1f}/30")
+            st.metric("Roster Construction", f"{breakdown['construction_score']:.1f}/25")
+            st.metric("Strategy & Value", f"{breakdown['strategy_score']:.1f}/25")
+            st.metric("Draft Execution", f"{breakdown['execution_score']:.1f}/20")
             
             st.markdown("---")
             
-            st.metric("Total VBD Accumulated", f"{breakdown['total_vbd']:.1f}")
-            st.metric("Average VBD per Player", f"{breakdown['avg_vbd']:.1f}")
-            st.metric("Value Picks Found", breakdown['value_picks'])
+            st.metric("Starter VBD", f"{breakdown['starter_vbd']:.1f}")
+            st.metric("Bench VBD", f"{breakdown['bench_vbd']:.1f}")
+            st.metric("Total VBD", f"{breakdown['total_vbd']:.1f}")
+            st.metric("Value Picks", f"{breakdown['value_picks']}/12")
+            st.metric("Early Value Picks", f"{breakdown['early_value_picks']}/6")
 
     def display_advanced_analytics(self, user_team: List[dict]):
         """Display advanced analytics for user's team."""
@@ -2598,65 +2770,212 @@ class DraftSimulator:
         return insights
 
     def display_future_suggestions(self, user_team: List[dict], draft_grade: dict):
-        """Display AI-powered future suggestions."""
-        st.markdown("### 🔮 AI Future Suggestions")
+        """Display AI-powered future suggestions for 12-player roster."""
+        st.markdown("### 🔮 Advanced AI Future Strategy")
         
-        # Waiver wire targets
-        st.markdown("#### 🎯 Waiver Wire Targets")
-        
-        # Find undrafted high-value players
-        drafted_names = [p['Player_Name'] for p in user_team]
-        undrafted = st.session_state.available_players[
-            ~st.session_state.available_players['Player_Name'].isin(drafted_names)
-        ].head(10)
-        
-        if not undrafted.empty:
-            for _, player in undrafted.iterrows():
-                st.markdown(f"""
-                <div style="padding: 0.8rem; margin: 0.5rem 0; background: rgba(0,255,135,0.1); border-left: 3px solid #00ff87; border-radius: 8px;">
-                    <div style="font-weight: 600;">{player['Player_Name']} ({player.get('Team', 'UNK')})</div>
-                    <div style="font-size: 0.9rem; color: rgba(255,255,255,0.8);">
-                        <span class="position-badge pos-{player['Position'].lower()}" style="font-size: 0.7rem; padding: 0.2rem 0.4rem;">{player['Position']}</span>
-                        VBD: {player['VBD_Value']:.1f} | Rank: #{player['Overall_Rank']}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-        # Trade targets
-        st.markdown("#### 🔄 Trade Opportunities")
-        
+        # Analyze roster construction
         position_counts = {}
+        position_vbd = {}
         for player in user_team:
             pos = player.get('Position', 'UNKNOWN')
             position_counts[pos] = position_counts.get(pos, 0) + 1
-
-        trade_suggestions = []
+            position_vbd[pos] = position_vbd.get(pos, 0) + player.get('VBD_Value', 0)
         
-        # Suggest trades based on roster construction
-        if position_counts.get('RB', 0) >= 4:
-            trade_suggestions.append("Consider trading RB depth for WR/TE upgrades")
-        if position_counts.get('WR', 0) >= 5:
-            trade_suggestions.append("Package WRs to upgrade at RB or elite TE")
-        if position_counts.get('QB', 0) >= 2:
-            trade_suggestions.append("Trade backup QB for skill position depth")
-
-        for suggestion in trade_suggestions:
-            st.markdown(f"• {suggestion}")
-
-        # Season management tips
-        st.markdown("#### 📅 Season Management Strategy")
+        # Advanced roster analysis
+        col1, col2 = st.columns(2)
         
-        management_tips = [
-            "Monitor bye weeks for optimal lineup management",
-            "Track injury reports for handcuff opportunities", 
-            "Stream defenses based on matchups",
-            "Consider quarterback streaming if you went late at the position",
-            "Watch for breakout candidates on waivers",
-            "Plan ahead for playoff schedule strength"
-        ]
+        with col1:
+            st.markdown("#### 🎯 Waiver Wire Priority Targets")
+            
+            # Find undrafted high-value players by position need
+            drafted_names = [p['Player_Name'] for p in user_team]
+            undrafted = st.session_state.available_players[
+                ~st.session_state.available_players['Player_Name'].isin(drafted_names)
+            ]
+            
+            # Priority based on roster weaknesses
+            weak_positions = []
+            
+            # Check starting lineup strength
+            qb_vbd = position_vbd.get('QB', 0)
+            rb_vbd = position_vbd.get('RB', 0) / max(position_counts.get('RB', 1), 2)  # Average RB value
+            wr_vbd = position_vbd.get('WR', 0) / max(position_counts.get('WR', 1), 2)  # Average WR value
+            te_vbd = position_vbd.get('TE', 0)
+            
+            if qb_vbd < 10:
+                weak_positions.append(('QB', 'Upgrade starting QB - low VBD score'))
+            if rb_vbd < 8:
+                weak_positions.append(('RB', 'RB corps needs strengthening'))
+            if wr_vbd < 8:
+                weak_positions.append(('WR', 'WR depth insufficient'))
+            if te_vbd < 6:
+                weak_positions.append(('TE', 'TE position needs upgrade'))
+            
+            # Show priority waiver targets
+            for pos, reason in weak_positions[:3]:
+                pos_targets = undrafted[undrafted['Position'] == pos].head(3)
+                if not pos_targets.empty:
+                    st.markdown(f"**🔥 {pos} Priority:** {reason}")
+                    for _, player in pos_targets.iterrows():
+                        st.markdown(f"""
+                        <div style="padding: 0.6rem; margin: 0.3rem 0; background: rgba(255,68,68,0.1); border-left: 3px solid #ff4444; border-radius: 6px;">
+                            <div style="font-weight: 600; font-size: 0.9rem;">{player['Player_Name']} ({player.get('Team', 'UNK')})</div>
+                            <div style="font-size: 0.8rem; color: rgba(255,255,255,0.8);">
+                                VBD: {player['VBD_Value']:.1f} | Rank: #{player['Overall_Rank']}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    st.markdown("")
         
-        for tip in management_tips[:4]:
-            st.markdown(f"• {tip}")
+        with col2:
+            st.markdown("#### 🔄 Advanced Roster Management")
+            
+            # Lineup optimization suggestions
+            st.markdown("**🎯 Weekly Lineup Strategy:**")
+            
+            # Analyze FLEX position
+            flex_player = user_team[6] if len(user_team) > 6 else None
+            if flex_player:
+                flex_pos = flex_player.get('Position', 'UNKNOWN')
+                flex_vbd = flex_player.get('VBD_Value', 0)
+                
+                if flex_vbd < 8:
+                    st.markdown("⚠️ FLEX position weak - consider weekly waiver streaming")
+                else:
+                    st.markdown(f"✅ Strong FLEX with {flex_player['Player_Name']} ({flex_vbd:.1f} VBD)")
+            
+            # Bench utilization
+            bench_players = user_team[9:] if len(user_team) > 9 else []
+            if bench_players:
+                bench_total_vbd = sum(p.get('VBD_Value', 0) for p in bench_players)
+                st.markdown(f"🪑 Bench VBD: {bench_total_vbd:.1f}")
+                
+                # Best bench player for potential starter
+                best_bench = max(bench_players, key=lambda p: p.get('VBD_Value', 0))
+                st.markdown(f"💎 Best Bench Asset: {best_bench['Player_Name']} ({best_bench.get('VBD_Value', 0):.1f} VBD)")
+            
+            # Bye week analysis
+            st.markdown("**📅 Bye Week Management:**")
+            bye_weeks = {}
+            for player in user_team[:9]:  # Only starters matter for bye weeks
+                bye = player.get('Bye_Week', 0)
+                if bye > 0:
+                    if bye not in bye_weeks:
+                        bye_weeks[bye] = []
+                    bye_weeks[bye].append(f"{player['Player_Name']} ({player['Position']})")
+            
+            # Identify problematic bye weeks
+            for week, players in bye_weeks.items():
+                if len(players) >= 3:
+                    st.markdown(f"🚨 Week {week}: {len(players)} starters on bye")
+                elif len(players) == 2:
+                    st.markdown(f"⚠️ Week {week}: {len(players)} starters on bye")
+        
+        # Enhanced trade analysis
+        st.markdown("#### 💱 Advanced Trade Opportunities")
+        
+        trade_col1, trade_col2 = st.columns(2)
+        
+        with trade_col1:
+            st.markdown("**📈 Roster Strengths to Trade From:**")
+            
+            # Identify position strengths (above average VBD)
+            avg_vbd_by_pos = {
+                'QB': 12, 'RB': 9, 'WR': 8, 'TE': 7, 'K': 3, 'DEF': 4  # Rough benchmarks
+            }
+            
+            trade_assets = []
+            for pos, threshold in avg_vbd_by_pos.items():
+                pos_vbd = position_vbd.get(pos, 0)
+                pos_count = position_counts.get(pos, 0)
+                if pos_count > 0:
+                    avg_pos_vbd = pos_vbd / pos_count
+                    if avg_pos_vbd > threshold and pos_count > 1:
+                        surplus = pos_count - self.roster_requirements.get(pos, 1)
+                        if surplus > 0:
+                            trade_assets.append(f"Strong {pos} depth - consider trading for upgrades")
+            
+            for asset in trade_assets:
+                st.markdown(f"• {asset}")
+            
+            if not trade_assets:
+                st.markdown("• No obvious trade assets - hold current roster")
+        
+        with trade_col2:
+            st.markdown("**📉 Areas to Target in Trades:**")
+            
+            upgrade_targets = []
+            
+            # Identify weak positions
+            for pos, threshold in avg_vbd_by_pos.items():
+                pos_vbd = position_vbd.get(pos, 0)
+                pos_count = position_counts.get(pos, 0)
+                if pos_count > 0:
+                    avg_pos_vbd = pos_vbd / pos_count
+                    if avg_pos_vbd < threshold * 0.8:  # Below 80% of benchmark
+                        upgrade_targets.append(f"Upgrade {pos} - current VBD below optimal")
+            
+            for target in upgrade_targets:
+                st.markdown(f"• {target}")
+            
+            if not upgrade_targets:
+                st.markdown("• Roster well-balanced - focus on depth")
+
+        # Season-long strategy based on roster construction
+        st.markdown("#### 📊 Season-Long Strategy Recommendations")
+        
+        strategy_recommendations = []
+        
+        # Analyze starting lineup strength
+        starter_strength = sum(p.get('VBD_Value', 0) for p in user_team[:9])
+        if starter_strength >= 80:
+            strategy_recommendations.append("🏆 **Championship Contender**: Strong starting lineup - focus on playoff schedule")
+        elif starter_strength >= 60:
+            strategy_recommendations.append("📈 **Competitive Team**: Solid foundation - target 1-2 key upgrades")
+        else:
+            strategy_recommendations.append("🔧 **Rebuilding Mode**: Focus on waiver wire gems and high-upside trades")
+        
+        # Position-specific strategies
+        if position_counts.get('RB', 0) < 3:
+            strategy_recommendations.append("🏃 **RB Strategy**: Prioritize RB handcuffs and waiver wire adds")
+        
+        if position_counts.get('WR', 0) >= 4:
+            strategy_recommendations.append("📡 **WR Strategy**: Deep WR corps - use for trade leverage")
+        
+        if position_counts.get('QB', 0) == 1:
+            strategy_recommendations.append("🎯 **QB Strategy**: Monitor QB2 options for bye week/injury insurance")
+        
+        # Display recommendations
+        for rec in strategy_recommendations:
+            st.markdown(rec)
+        
+        # Future draft advice
+        st.markdown("#### 🎓 Future Draft Improvement Tips")
+        
+        draft_advice = []
+        breakdown = draft_grade['breakdown']
+        
+        if breakdown['execution_score'] < 15:
+            draft_advice.append("📋 **Position Order**: Follow QB→WR→WR→RB→RB→TE→FLEX→K→DEF for optimal roster construction")
+        
+        if breakdown['strategy_score'] < 20:
+            draft_advice.append("💎 **Value Identification**: Focus more on VBD scores rather than name recognition")
+        
+        if breakdown['construction_score'] < 20:
+            draft_advice.append("🏗️ **Roster Building**: Ensure all required positions filled before drafting bench depth")
+        
+        if breakdown['vbd_score'] < 25:
+            draft_advice.append("📊 **VBD Focus**: Target higher VBD players, especially in early rounds")
+        
+        # General improvement tips
+        draft_advice.extend([
+            "⏰ **Draft Timing**: Don't reach for positions too early (K/DEF rounds 8-9 only)",
+            "🔄 **FLEX Strategy**: Use FLEX for best remaining WR/RB/TE, not positional need",
+            "🪑 **Bench Value**: Draft bench players with upside, not just safe floor players"
+        ])
+        
+        for advice in draft_advice[:6]:
+            st.markdown(advice)
 
     def get_draft_insights(self):
         """Generate contextual draft insights for the user."""
@@ -3028,7 +3347,7 @@ elif st.session_state.current_page == 'Draft':
         if 'user_draft_position' not in st.session_state:
             st.session_state.user_draft_position = 5
         if 'draft_rounds' not in st.session_state:
-            st.session_state.draft_rounds = 16
+            st.session_state.draft_rounds = 12
         if 'pick_timer_start' not in st.session_state:
             st.session_state.pick_timer_start = None
         if 'waiting_for_user_pick' not in st.session_state:
@@ -3044,13 +3363,15 @@ elif st.session_state.current_page == 'Draft':
             col1, col2 = st.columns([2, 1])
             
             with col1:
-                st.markdown("### 🎮 Real-Time Draft Configuration")
+                st.markdown("### 🎮 12-Player Fantasy Draft Configuration")
                 
                 draft_col1, draft_col2, draft_col3 = st.columns(3)
                 
                 with draft_col1:
-                    num_rounds = st.selectbox("Draft Rounds", [10, 12, 15, 16], index=3)
-                    st.session_state.draft_rounds = num_rounds
+                    # Fixed to 12 rounds for the specific roster format
+                    st.session_state.draft_rounds = 12
+                    st.markdown("**Draft Rounds:** 12 (Fixed)")
+                    st.markdown("**Roster Format:** QB, 2WR, 2RB, TE, FLEX, K, DEF, 3 Bench")
                 
                 with draft_col2:
                     draft_position = st.selectbox("Your Draft Position", list(range(1, 11)), index=4)
@@ -3060,14 +3381,18 @@ elif st.session_state.current_page == 'Draft':
                     league_type = st.selectbox("League Type", ["Standard", "PPR", "Half-PPR"], index=1)
 
             with col2:
-                st.markdown("### ⏱️ Real-Time Features")
+                st.markdown("### ⏱️ 12-Player Draft Features")
                 st.markdown("""
-                **Live Draft Features:**
-                - ⏱️ 60-second timer per pick
-                - 🎯 User player selection
+                **🏈 Roster Format:**
+                - 1 QB, 2 WR, 2 RB, 1 TE
+                - 1 FLEX (WR/RB/TE), 1 K, 1 DEF
+                - 3 Bench players
+                
+                **🎮 Live Features:**
+                - ⏱️ 60-second pick timer
                 - 🤖 Smart AI opponents
-                - 📊 Live draft analytics
-                - 🏆 Post-draft AI grading
+                - 📊 Real-time analytics
+                - 🏆 Advanced post-draft grading
                 """)
 
             if st.button("🚀 Start Real-Time Draft", type="primary", use_container_width=True):
