@@ -1281,7 +1281,7 @@ class DraftSimulator:
         if round_num % 2 == 1:  # Odd rounds go 1-10
             return pick_in_round - 1
         else:  # Even rounds go 10-1
-            return 9 - (pick_in_round - 1)
+            return 10 - pick_in_round
 
     def ai_draft_pick(self, team_index: int, available_players: pd.DataFrame) -> dict:
         """AI logic for drafting players."""
@@ -1428,6 +1428,13 @@ class DraftSimulator:
         pick_in_round = ((current_pick - 1) % 10) + 1
         is_user_turn = (team_index == st.session_state.user_draft_position - 1)
         
+        # Set waiting for user pick flag
+        if is_user_turn and not st.session_state.waiting_for_user_pick:
+            st.session_state.waiting_for_user_pick = True
+            st.session_state.pick_timer_start = datetime.now()
+        elif not is_user_turn:
+            st.session_state.waiting_for_user_pick = False
+        
         # Enhanced Draft Header
         st.markdown(f"""
         <div class="draft-container" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); text-align: center; padding: 2rem; margin-bottom: 1rem; border-radius: 20px; box-shadow: 0 15px 35px rgba(30,60,114,0.3);">
@@ -1528,51 +1535,87 @@ class DraftSimulator:
             self.render_my_team()
 
     def render_ai_suggestions(self):
-        """Render AI-suggested players for the user in a clean format."""
+        """Render enhanced AI-suggested players for the user."""
         with st.container():
             st.markdown("""
             <div style="background: linear-gradient(135deg, rgba(102,126,234,0.15) 0%, rgba(118,75,162,0.15) 100%); 
                        border-radius: 12px; padding: 1.5rem; margin: 1rem 0; 
                        border: 2px solid rgba(102,126,234,0.3); box-shadow: 0 8px 25px rgba(102,126,234,0.1);">
-                <h3 style="margin-top: 0; color: #667eea; font-size: 1.2rem;">🤖 AI RECOMMENDATIONS</h3>
+                <h3 style="margin-top: 0; color: #667eea; font-size: 1.2rem;">🤖 ADVANCED AI RECOMMENDATIONS</h3>
             </div>
             """, unsafe_allow_html=True)
             
             # Get AI suggestions based on user's current team and draft position
             suggestions = self.get_ai_suggestions_for_user()
+            current_round = ((st.session_state.current_pick_number - 1) // 10) + 1
+            
+            # Draft context
+            user_picks = [pick for pick in st.session_state.draft_results if pick['team'] == 'Your Team']
+            st.markdown(f"**Round {current_round} Analysis** | Picks Made: {len(user_picks)} | Available Players: {len(st.session_state.available_players)}")
             
             if suggestions:
-                st.markdown("**Top Suggestions for Your Pick:**")
+                st.markdown("---")
+                st.markdown("**🎯 Strategic Recommendations:**")
                 
                 for i, player in enumerate(suggestions[:5]):
                     suggestion_type = player.get('suggestion_type', 'VALUE')
                     reason = player.get('reason', 'Strong pick at this position')
                     
-                    # Create suggestion card with Streamlit components
-                    sug_cols = st.columns([3, 1])
-                    
-                    with sug_cols[0]:
-                        # Suggestion type indicator
-                        type_colors = {
-                            'NEED': '🔥',
-                            'VALUE': '💎', 
-                            'BPA': '⭐'
-                        }
-                        type_icon = type_colors.get(suggestion_type, '⭐')
+                    # Enhanced suggestion display
+                    sug_container = st.container()
+                    with sug_container:
+                        sug_cols = st.columns([4, 1])
                         
-                        st.markdown(f"{type_icon} **{player['Player_Name']}** ({player['Position']})")
-                        st.markdown(f"<small style='color: rgba(255,255,255,0.8);'>{suggestion_type}: {reason}</small>", unsafe_allow_html=True)
-                        st.markdown(f"<small>#{player['Overall_Rank']} Overall | VBD: {player['VBD_Value']:.1f}</small>", unsafe_allow_html=True)
-                    
-                    with sug_cols[1]:
-                        if st.button(f"📝 DRAFT", key=f"ai_suggestion_{i}", type="primary", use_container_width=True):
-                            self.make_user_pick(player)
-                            st.rerun()
+                        with sug_cols[0]:
+                            # Enhanced suggestion type indicators
+                            type_styles = {
+                                'NEED': ('🔥', '#ff4444', 'ROSTER NEED'),
+                                'VALUE': ('💎', '#00ff87', 'VALUE PICK'), 
+                                'BPA': ('⭐', '#ffd700', 'BEST AVAILABLE'),
+                                'SLEEPER': ('🚀', '#4facfe', 'SLEEPER PICK')
+                            }
+                            
+                            icon, color, label = type_styles.get(suggestion_type, ('⭐', '#666', 'RECOMMENDED'))
+                            
+                            st.markdown(f"""
+                            <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                                <span style="font-size: 1.2rem; margin-right: 0.5rem;">{icon}</span>
+                                <span style="background: {color}; color: black; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.7rem; font-weight: bold; margin-right: 0.5rem;">{label}</span>
+                                <span style="font-weight: bold; font-size: 1.1rem;">{player['Player_Name']}</span>
+                                <span style="margin-left: 0.5rem; color: rgba(255,255,255,0.7);">({player['Position']})</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            st.markdown(f"<div style='color: rgba(255,255,255,0.9); font-size: 0.9rem; margin-left: 1.7rem;'>{reason}</div>", unsafe_allow_html=True)
+                            
+                            # Player stats
+                            stats_cols = st.columns([1, 1, 1, 1])
+                            with stats_cols[0]:
+                                st.markdown(f"<small>**Rank:** #{int(player['Overall_Rank'])}</small>", unsafe_allow_html=True)
+                            with stats_cols[1]:
+                                st.markdown(f"<small>**VBD:** {player['VBD_Value']:.1f}</small>", unsafe_allow_html=True)
+                            with stats_cols[2]:
+                                st.markdown(f"<small>**Pos Rank:** #{int(player['Position_Rank'])}</small>", unsafe_allow_html=True)
+                            with stats_cols[3]:
+                                st.markdown(f"<small>**Team:** {player.get('Team', 'UNK')}</small>", unsafe_allow_html=True)
+                        
+                        with sug_cols[1]:
+                            if st.button(f"📝 DRAFT", key=f"ai_suggestion_{i}", type="primary", use_container_width=True):
+                                self.make_user_pick(player)
+                                st.rerun()
                     
                     if i < len(suggestions) - 1:
-                        st.markdown("<hr style='margin: 0.5rem 0; border: 1px solid rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
+                        st.markdown("<hr style='margin: 0.8rem 0; border: 1px solid rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
+                
+                # Additional draft insights
+                st.markdown("---")
+                st.markdown("**💡 Draft Insights:**")
+                insights = self.get_draft_insights()
+                for insight in insights[:3]:
+                    st.markdown(f"• {insight}")
+                    
             else:
-                st.markdown("<div style='text-align: center; color: rgba(255,255,255,0.5); padding: 1rem;'>Analyzing available players...</div>", unsafe_allow_html=True)
+                st.markdown("<div style='text-align: center; color: rgba(255,255,255,0.5); padding: 1rem;'>🔄 Analyzing optimal picks for your roster...</div>", unsafe_allow_html=True)
 
     def render_draft_board(self, is_user_turn=False):
         """Render the complete draft board with all available players in a clean table format."""
@@ -1815,62 +1858,150 @@ class DraftSimulator:
                 st.markdown(f"• {pos}: {count}")
 
     def get_ai_suggestions_for_user(self):
-        """Generate AI suggestions based on user's team composition and draft strategy."""
+        """Generate advanced AI suggestions based on user's team composition and draft strategy."""
         user_picks = [pick for pick in st.session_state.draft_results if pick['team'] == 'Your Team']
         available = st.session_state.available_players.copy()
         
         # Analyze user's current roster
         user_positions = {}
+        user_vbd_total = 0
         for pick in user_picks:
             pos = pick['position']
             user_positions[pos] = user_positions.get(pos, 0) + 1
+            user_vbd_total += pick.get('vbd', 0)
         
         suggestions = []
         current_round = ((st.session_state.current_pick_number - 1) // 10) + 1
+        picks_made = len(user_picks)
         
-        # Best Player Available (BPA)
-        bpa = available.head(1).iloc[0] if len(available) > 0 else None
-        if bpa is not None:
+        # Advanced roster analysis
+        total_rb_value = sum(pick.get('vbd', 0) for pick in user_picks if pick['position'] == 'RB')
+        total_wr_value = sum(pick.get('vbd', 0) for pick in user_picks if pick['position'] == 'WR')
+        has_elite_qb = any(pick.get('vbd', 0) > 15 for pick in user_picks if pick['position'] == 'QB')
+        has_elite_te = any(pick.get('vbd', 0) > 12 for pick in user_picks if pick['position'] == 'TE')
+        
+        # Best Player Available with context
+        if len(available) > 0:
+            bpa = available.iloc[0]
+            bpa_reason = f"Elite tier player (#{int(bpa['Overall_Rank'])}) - significant value drop after this pick"
+            if bpa['VBD_Value'] > 20:
+                bpa_reason = f"Premium player with {bpa['VBD_Value']:.1f} VBD - rare elite talent"
             suggestions.append({
                 **bpa.to_dict(),
                 'suggestion_type': 'BPA',
-                'reason': 'Highest ranked available player'
+                'reason': bpa_reason
             })
         
-        # Position of Need
+        # Strategic Position Needs with advanced logic
         needed_positions = []
-        if user_positions.get('QB', 0) == 0 and current_round >= 4:
-            needed_positions.append('QB')
-        if user_positions.get('RB', 0) < 2 and current_round <= 8:
-            needed_positions.append('RB')
-        if user_positions.get('WR', 0) < 2 and current_round <= 10:
-            needed_positions.append('WR')
-        if user_positions.get('TE', 0) == 0 and current_round >= 6:
-            needed_positions.append('TE')
         
-        for pos in needed_positions[:2]:
+        # QB strategy
+        if user_positions.get('QB', 0) == 0:
+            if current_round <= 6:
+                needed_positions.append(('QB', 'Secure your starting QB before tier drop'))
+            elif current_round <= 12:
+                needed_positions.append(('QB', 'Late-round QB with streaming potential'))
+        
+        # RB scarcity strategy
+        if user_positions.get('RB', 0) < 2:
+            if current_round <= 3:
+                needed_positions.append(('RB', 'Elite RB1 - position scarcity at premium'))
+            elif current_round <= 8:
+                needed_positions.append(('RB', 'RB2 depth before dead zone'))
+            else:
+                needed_positions.append(('RB', 'Handcuff or lottery ticket RB'))
+        elif user_positions.get('RB', 0) == 2 and total_rb_value < 30:
+            needed_positions.append(('RB', 'Upgrade RB corps - current value too low'))
+        
+        # WR depth strategy
+        if user_positions.get('WR', 0) < 2:
+            if current_round <= 5:
+                needed_positions.append(('WR', 'WR1 with target share and upside'))
+            else:
+                needed_positions.append(('WR', 'WR depth in deep position'))
+        elif user_positions.get('WR', 0) < 4 and current_round >= 6:
+            needed_positions.append(('WR', 'Build WR depth - injury insurance'))
+        
+        # TE premium strategy
+        if user_positions.get('TE', 0) == 0:
+            if current_round >= 4 and current_round <= 8 and not has_elite_te:
+                needed_positions.append(('TE', 'Elite TE provides positional advantage'))
+            elif current_round >= 9:
+                needed_positions.append(('TE', 'Streaming TE option'))
+        
+        # Defense/Kicker timing
+        if current_round >= 14:
+            if user_positions.get('DEF', 0) == 0:
+                needed_positions.append(('DEF', 'Stream defenses or target elite unit'))
+            if user_positions.get('K', 0) == 0:
+                needed_positions.append(('K', 'Final round kicker or waiver pickup'))
+        
+        # Add position need suggestions
+        for pos, reason in needed_positions[:3]:
             pos_players = available[available['Position'] == pos]
             if len(pos_players) > 0:
                 best_pos = pos_players.iloc[0]
                 suggestions.append({
                     **best_pos.to_dict(),
                     'suggestion_type': 'NEED',
-                    'reason': f'Fill {pos} position need'
+                    'reason': reason
                 })
         
-        # Value Picks (high VBD relative to rank)
-        value_threshold = available['VBD_Value'].quantile(0.75) if len(available) > 20 else 0
-        value_picks = available[available['VBD_Value'] >= value_threshold].head(3)
+        # Advanced Value Analysis
+        if len(available) > 10:
+            # Calculate position scarcity value
+            for pos in ['RB', 'WR', 'TE', 'QB']:
+                pos_players = available[available['Position'] == pos]
+                if len(pos_players) > 0:
+                    top_pos = pos_players.head(3)
+                    for _, player in top_pos.iterrows():
+                        if len(suggestions) < 8:
+                            vbd_val = player['VBD_Value']
+                            pos_rank = player['Position_Rank']
+                            
+                            # Advanced value reasoning
+                            if vbd_val > 15 and pos_rank <= 5:
+                                reason = f"Elite {pos} - significant positional advantage"
+                            elif vbd_val > 10 and current_round >= 6:
+                                reason = f"Late-round value - {pos} falling below ADP"
+                            elif pos == 'RB' and vbd_val > 8:
+                                reason = f"RB scarcity value - workhorse potential"
+                            elif pos == 'TE' and vbd_val > 8:
+                                reason = f"TE premium - consistent target share"
+                            else:
+                                reason = f"Solid {pos} option with {vbd_val:.1f} VBD"
+                                
+                            suggestions.append({
+                                **player.to_dict(),
+                                'suggestion_type': 'VALUE',
+                                'reason': reason
+                            })
         
-        for _, player in value_picks.iterrows():
-            if len(suggestions) < 5:
-                suggestions.append({
-                    **player.to_dict(),
-                    'suggestion_type': 'VALUE',
-                    'reason': 'High value based on VBD analysis'
-                })
+        # Breakout/Sleeper candidates
+        if current_round >= 8:
+            sleeper_candidates = available[
+                (available['VBD_Value'] > 5) & 
+                (available['Overall_Rank'] > 80)
+            ].head(2)
+            
+            for _, player in sleeper_candidates.iterrows():
+                if len(suggestions) < 10:
+                    suggestions.append({
+                        **player.to_dict(),
+                        'suggestion_type': 'SLEEPER',
+                        'reason': f"Breakout candidate - late round upside play"
+                    })
         
-        return suggestions[:5]
+        # Remove duplicates and return top suggestions
+        seen_players = set()
+        unique_suggestions = []
+        for suggestion in suggestions:
+            player_name = suggestion.get('Player_Name', '')
+            if player_name not in seen_players:
+                seen_players.add(player_name)
+                unique_suggestions.append(suggestion)
+        
+        return unique_suggestions[:5]
 
     def handle_user_pick(self):
         """Handle when it's the user's turn to pick."""
@@ -1924,13 +2055,18 @@ class DraftSimulator:
         if st.session_state.draft_simulator:
             st.session_state.draft_simulator.user_team.append(player_dict)
         
-        # Move to next pick
+        # Move to next pick and reset timer
         st.session_state.current_pick_number += 1
         st.session_state.waiting_for_user_pick = False
-        self.start_pick_timer()
+        st.session_state.pick_timer_start = datetime.now()
+        
+        # Check if draft is complete
+        max_picks = st.session_state.draft_rounds * 10
+        if st.session_state.current_pick_number > max_picks:
+            st.session_state.draft_completed = True
         
         # Show success message
-        st.success(f"🎯 You drafted {pick_info['player']} ({pick_info['position']})!")
+        st.success(f"🎯 Excellent pick! You drafted {pick_info['player']} ({pick_info['position']}) in Round {pick_info['round']}")
 
     def handle_ai_pick(self):
         """Handle AI picks with optimized timer."""
@@ -1950,7 +2086,17 @@ class DraftSimulator:
             team_index = simulator.get_pick_order(st.session_state.current_pick_number)
             
             if len(st.session_state.available_players) > 0:
-                ai_team_index = team_index - 1 if team_index > 0 else 8
+                # Correct AI team mapping
+                if team_index == st.session_state.user_draft_position - 1:
+                    return  # This is actually the user's turn, don't make AI pick
+                
+                # Map team index to AI team (exclude user position)
+                ai_teams_mapping = [i for i in range(10) if i != st.session_state.user_draft_position - 1]
+                if team_index < len(ai_teams_mapping):
+                    ai_team_index = ai_teams_mapping.index(team_index) if team_index in ai_teams_mapping else 0
+                else:
+                    ai_team_index = 0
+                
                 ai_pick = simulator.ai_draft_pick(ai_team_index, st.session_state.available_players)
                 
                 if ai_pick:
@@ -1967,22 +2113,28 @@ class DraftSimulator:
                     
                     st.session_state.draft_results.append(pick_info)
                     
-                    # Remove player from available (optimized)
+                    # Remove player from available
                     st.session_state.available_players = st.session_state.available_players[
                         st.session_state.available_players['Player_Name'] != ai_pick.get('Player_Name')
                     ].reset_index(drop=True)
                     
-                    # Add to AI team
+                    # Add to correct AI team
                     if ai_team_index < 9:
                         simulator.ai_teams[ai_team_index].append(ai_pick)
                     
                     # Move to next pick
                     st.session_state.current_pick_number += 1
                     st.session_state.pick_timer_start = datetime.now()
-                    del st.session_state.ai_pick_time  # Reset for next AI turn
+                    if hasattr(st.session_state, 'ai_pick_time'):
+                        del st.session_state.ai_pick_time
+                    
+                    # Check if draft is complete
+                    max_picks = st.session_state.draft_rounds * 10
+                    if st.session_state.current_pick_number > max_picks:
+                        st.session_state.draft_completed = True
                     
                     # Show pick notification
-                    st.success(f"🤖 AI Team {team_index + 1} selected {pick_info['player']} ({pick_info['position']})")
+                    st.info(f"🤖 Pick #{pick_info['pick']}: {pick_info['team']} selected {pick_info['player']} ({pick_info['position']})")
                     
                     st.rerun()
         
@@ -2505,6 +2657,47 @@ class DraftSimulator:
         
         for tip in management_tips[:4]:
             st.markdown(f"• {tip}")
+
+    def get_draft_insights(self):
+        """Generate contextual draft insights for the user."""
+        insights = []
+        user_picks = [pick for pick in st.session_state.draft_results if pick['team'] == 'Your Team']
+        current_round = ((st.session_state.current_pick_number - 1) // 10) + 1
+        available = st.session_state.available_players
+        
+        # Position scarcity insights
+        rb_left = len(available[available['Position'] == 'RB'])
+        wr_left = len(available[available['Position'] == 'WR'])
+        qb_left = len(available[available['Position'] == 'QB'])
+        
+        user_positions = {}
+        for pick in user_picks:
+            pos = pick['position']
+            user_positions[pos] = user_positions.get(pos, 0) + 1
+        
+        if current_round <= 8 and user_positions.get('RB', 0) < 2:
+            insights.append(f"RB Scarcity Alert: Only {rb_left} RBs remain - consider securing depth")
+        
+        if current_round >= 6 and user_positions.get('QB', 0) == 0 and qb_left <= 15:
+            insights.append(f"QB Tier Drop: {qb_left} QBs left - grab starter before streaming begins")
+        
+        if current_round <= 10 and user_positions.get('WR', 0) < 3:
+            insights.append(f"WR Depth: {wr_left} WRs available - build depth in deepest position")
+        
+        # Value opportunities
+        elite_remaining = len(available[available['VBD_Value'] > 15])
+        if elite_remaining > 0:
+            insights.append(f"Elite Talent: {elite_remaining} premium players still available")
+        
+        # Round-specific advice
+        if current_round <= 3:
+            insights.append("Early Round Strategy: Prioritize elite players at scarce positions (RB/WR)")
+        elif current_round <= 8:
+            insights.append("Middle Round Strategy: Fill roster needs while maintaining value")
+        else:
+            insights.append("Late Round Strategy: Target high-upside players and handcuffs")
+            
+        return insights
 
     def display_full_draft_board(self):
         """Display the complete draft board."""
