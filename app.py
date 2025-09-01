@@ -100,6 +100,14 @@ st.markdown("""
         margin: 5px;
         text-align: center;
     }
+    
+    .ai-explanation {
+        background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+        border-radius: 10px;
+        padding: 20px;
+        margin: 10px 0;
+        border: 1px solid rgba(255,255,255,0.2);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -108,6 +116,14 @@ class SimpleFantasyAnalyzer:
     
     def __init__(self):
         self.position_sheets = ['QB', 'RBs', 'WR', 'TE', 'K', 'DEF']
+        self.sheet_variations = {
+            'QB': ['QB', 'Quarterbacks', 'Quarterback', 'QBS'],
+            'RB': ['RB', 'RBs', 'Running Back', 'Running Backs', 'RBS'],
+            'WR': ['WR', 'WRs', 'Wide Receiver', 'Wide Receivers', 'WRS'],
+            'TE': ['TE', 'TEs', 'Tight End', 'Tight Ends', 'TES'],
+            'K': ['K', 'Kicker', 'Kickers', 'KS'],
+            'DEF': ['DEF', 'Defense', 'Defenses', 'DST', 'D/ST']
+        }
         self.colors = {
             'QB': '#e74c3c',
             'RB': '#3498db', 
@@ -117,35 +133,61 @@ class SimpleFantasyAnalyzer:
             'DEF': '#34495e'
         }
         
+    def find_sheet_name(self, sheet_names: List[str], position: str) -> Optional[str]:
+        """Find the actual sheet name for a position."""
+        variations = self.sheet_variations.get(position, [position])
+        
+        for variation in variations:
+            # Case insensitive matching
+            for sheet_name in sheet_names:
+                if variation.lower() == sheet_name.lower():
+                    return sheet_name
+                elif variation.lower() in sheet_name.lower():
+                    return sheet_name
+        
+        return None
+        
     def process_excel_file(self, uploaded_file) -> pd.DataFrame:
         """Process Excel file and extract specific position sheets."""
         try:
+            # First, get all sheet names
+            excel_file = pd.ExcelFile(uploaded_file, engine='openpyxl')
+            available_sheets = excel_file.sheet_names
+            
+            st.info(f"Available sheets: {', '.join(available_sheets)}")
+            
             all_players = []
             
-            # Read specific sheets
-            for sheet_name in self.position_sheets:
-                try:
-                    df = pd.read_excel(uploaded_file, sheet_name=sheet_name, engine='openpyxl')
-                    if not df.empty:
-                        # Clean column names
-                        df.columns = [str(col).strip() for col in df.columns]
-                        
-                        # Add position from sheet name
-                        position = 'RB' if sheet_name == 'RBs' else sheet_name
-                        df['Position'] = position
-                        df['Sheet_Source'] = sheet_name
-                        
-                        # Get news from column Y (index 24)
-                        if len(df.columns) > 24:
-                            df['News'] = df.iloc[:, 24]  # Column Y
-                        else:
-                            df['News'] = ''
-                        
-                        all_players.append(df)
-                        
-                except Exception as e:
-                    st.warning(f"Could not read sheet '{sheet_name}': {str(e)}")
-                    continue
+            # Try to find and read sheets for each position
+            for position in ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']:
+                sheet_name = self.find_sheet_name(available_sheets, position)
+                
+                if sheet_name:
+                    try:
+                        df = pd.read_excel(uploaded_file, sheet_name=sheet_name, engine='openpyxl')
+                        if not df.empty:
+                            # Clean column names
+                            df.columns = [str(col).strip() for col in df.columns]
+                            
+                            # Add position from sheet name
+                            df['Position'] = position
+                            df['Sheet_Source'] = sheet_name
+                            
+                            # Get news from column Y (index 24) or look for news-like columns
+                            news_col = self.find_news_column(df)
+                            if news_col:
+                                df['News'] = df[news_col]
+                            else:
+                                df['News'] = 'No recent news'
+                            
+                            all_players.append(df)
+                            st.success(f"✅ Found and loaded {position} data from sheet '{sheet_name}'")
+                            
+                    except Exception as e:
+                        st.warning(f"Error reading sheet '{sheet_name}' for {position}: {str(e)}")
+                        continue
+                else:
+                    st.warning(f"No sheet found for position {position}")
             
             if all_players:
                 combined_df = pd.concat(all_players, ignore_index=True)
@@ -156,6 +198,24 @@ class SimpleFantasyAnalyzer:
         except Exception as e:
             st.error(f"Error processing Excel file: {str(e)}")
             return pd.DataFrame()
+    
+    def find_news_column(self, df: pd.DataFrame) -> Optional[str]:
+        """Find the news column in the dataframe."""
+        # First try column Y (index 24)
+        if len(df.columns) > 24:
+            return df.columns[24]
+        
+        # Then look for columns with 'news' in the name
+        for col in df.columns:
+            if 'news' in str(col).lower():
+                return col
+        
+        # Look for columns with 'note' or 'comment'
+        for col in df.columns:
+            if any(keyword in str(col).lower() for keyword in ['note', 'comment', 'update', 'status']):
+                return col
+        
+        return None
     
     def clean_and_grade_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Clean data and generate AI grades."""
@@ -181,6 +241,9 @@ class SimpleFantasyAnalyzer:
         # Generate AI grades based on position and stats
         df['AI_Grade'] = df.apply(lambda row: self.generate_ai_grade(row, numeric_cols), axis=1)
         df['AI_Rank'] = df.groupby('Position')['AI_Grade'].rank(ascending=False, method='dense').astype(int)
+        
+        # Generate AI explanations
+        df['AI_Explanation'] = df.apply(lambda row: self.generate_ai_explanation(row, numeric_cols), axis=1)
         
         # Clean news column
         if 'News' in df.columns:
@@ -256,6 +319,72 @@ class SimpleFantasyAnalyzer:
         # Normalize to 0-100 scale
         return max(0, min(100, base_grade))
     
+    def generate_ai_explanation(self, player_row, numeric_cols) -> str:
+        """Generate AI explanation for the ranking."""
+        position = player_row.get('Position', 'UNKNOWN')
+        grade = player_row.get('AI_Grade', 50)
+        
+        explanation = f"**AI Analysis for {player_row.get('Player_Name', 'Unknown')}:**\n\n"
+        
+        # Grade tier explanation
+        if grade >= 80:
+            explanation += "🔥 **Elite Tier (80+)**: This player shows exceptional potential based on available statistics.\n\n"
+        elif grade >= 70:
+            explanation += "⭐ **High Tier (70-79)**: This player demonstrates strong performance metrics.\n\n"
+        elif grade >= 60:
+            explanation += "📊 **Medium Tier (60-69)**: This player shows decent statistical performance.\n\n"
+        else:
+            explanation += "📈 **Developing Tier (<60)**: This player may need more development or has limited statistical data.\n\n"
+        
+        # Position-specific analysis
+        stats = {}
+        for col in numeric_cols:
+            if pd.notna(player_row.get(col)):
+                stats[col] = player_row[col]
+        
+        if stats:
+            explanation += "**Key Performance Factors:**\n"
+            
+            if position == 'QB':
+                explanation += "• Evaluated based on passing efficiency, touchdown production, and turnover avoidance\n"
+                for col, value in stats.items():
+                    col_lower = str(col).lower()
+                    if 'td' in col_lower:
+                        explanation += f"• Touchdown production: {value}\n"
+                    elif 'yard' in col_lower and 'pass' in col_lower:
+                        explanation += f"• Passing yards: {value}\n"
+                        
+            elif position == 'RB':
+                explanation += "• Evaluated based on rushing efficiency, touchdown potential, and consistency\n"
+                for col, value in stats.items():
+                    col_lower = str(col).lower()
+                    if 'rush' in col_lower and 'yard' in col_lower:
+                        explanation += f"• Rushing yards: {value}\n"
+                    elif 'td' in col_lower:
+                        explanation += f"• Touchdowns: {value}\n"
+                        
+            elif position == 'WR':
+                explanation += "• Evaluated based on receiving production, target share, and red zone efficiency\n"
+                for col, value in stats.items():
+                    col_lower = str(col).lower()
+                    if 'rec' in col_lower and 'yard' in col_lower:
+                        explanation += f"• Receiving yards: {value}\n"
+                    elif 'target' in col_lower:
+                        explanation += f"• Targets: {value}\n"
+                        
+            elif position == 'TE':
+                explanation += "• Evaluated based on receiving production and red zone usage\n"
+                
+            elif position == 'K':
+                explanation += "• Evaluated based on field goal accuracy and extra point reliability\n"
+                
+            elif position == 'DEF':
+                explanation += "• Evaluated based on sacks, turnovers, and defensive touchdowns\n"
+        
+        explanation += f"\n**Final Grade: {grade:.1f}/100**"
+        
+        return explanation
+    
     def get_grade_class(self, grade: float) -> str:
         """Get CSS class for grade badge."""
         if grade >= 80:
@@ -267,50 +396,150 @@ class SimpleFantasyAnalyzer:
         else:
             return 'grade-low'
     
-    def render_player_modal(self, player_data, all_stats_cols):
-        """Render detailed player information in modal."""
-        col1, col2 = st.columns([1, 2])
+    def render_player_modal(self, player_data, all_stats_cols, position_data):
+        """Render detailed player information with tabs."""
+        st.markdown(f"## 🏈 {player_data['Player_Name']}")
+        
+        # Player basic info
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            # Player info
-            st.markdown(f"### {player_data['Player_Name']}")
-            
             position = player_data.get('Position', 'UNKNOWN')
             st.markdown(f'<span class="position-badge pos-{position.lower()}">{position}</span>', 
                        unsafe_allow_html=True)
-            
-            # AI Grade
-            grade = player_data.get('AI_Grade', 0)
-            rank = player_data.get('AI_Rank', 'N/A')
-            grade_class = self.get_grade_class(grade)
-            
-            st.markdown(f'<div class="grade-badge {grade_class}">{grade:.1f}</div>', 
-                       unsafe_allow_html=True)
-            
-            st.markdown(f"**AI Rank:** #{rank} {position}")
         
         with col2:
-            # Stats
-            st.markdown("#### Player Statistics")
-            
-            stats_data = []
-            for col in all_stats_cols:
-                if col in player_data and pd.notna(player_data[col]):
-                    if isinstance(player_data[col], (int, float)):
-                        stats_data.append({
-                            'Stat': col,
-                            'Value': f"{player_data[col]:.1f}" if isinstance(player_data[col], float) else str(player_data[col])
-                        })
-            
-            if stats_data:
-                stats_df = pd.DataFrame(stats_data)
-                st.dataframe(stats_df, hide_index=True, use_container_width=True)
-        
-        # News section
-        if 'News' in player_data and str(player_data['News']).strip() != 'No recent news':
-            st.markdown("#### Latest News")
-            st.markdown(f'<div class="news-container">{player_data["News"]}</div>', 
+            grade = player_data.get('AI_Grade', 0)
+            grade_class = self.get_grade_class(grade)
+            st.markdown(f'<div class="grade-badge {grade_class}">{grade:.1f}</div>', 
                        unsafe_allow_html=True)
+        
+        with col3:
+            rank = player_data.get('AI_Rank', 'N/A')
+            st.metric("Position Rank", f"#{rank}")
+        
+        with col4:
+            total_players = len(position_data)
+            percentile = ((total_players - rank + 1) / total_players) * 100 if rank != 'N/A' else 0
+            st.metric("Percentile", f"{percentile:.0f}%")
+        
+        # Tabs for detailed information
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 Statistics", "📰 News & Updates", "🧠 AI Analysis", "📈 Ranking Plots"])
+        
+        with tab1:
+            self.render_stats_tab(player_data, all_stats_cols)
+        
+        with tab2:
+            self.render_news_tab(player_data)
+        
+        with tab3:
+            self.render_ai_analysis_tab(player_data)
+        
+        with tab4:
+            self.render_ranking_plots_tab(player_data, position_data)
+    
+    def render_stats_tab(self, player_data, all_stats_cols):
+        """Render player statistics tab."""
+        st.markdown("### Player Statistics")
+        
+        stats_data = []
+        for col in all_stats_cols:
+            if col in player_data and pd.notna(player_data[col]):
+                if isinstance(player_data[col], (int, float)):
+                    stats_data.append({
+                        'Statistic': col,
+                        'Value': f"{player_data[col]:.1f}" if isinstance(player_data[col], float) else str(player_data[col])
+                    })
+        
+        if stats_data:
+            stats_df = pd.DataFrame(stats_data)
+            st.dataframe(stats_df, hide_index=True, width='stretch')
+        else:
+            st.info("No numeric statistics available for this player.")
+    
+    def render_news_tab(self, player_data):
+        """Render news and updates tab."""
+        st.markdown("### Latest News & Updates")
+        
+        news = str(player_data.get('News', 'No recent news'))
+        if news and news.strip() != 'No recent news' and news != 'nan':
+            st.markdown(f'<div class="news-container">{news}</div>', unsafe_allow_html=True)
+        else:
+            st.info("No recent news available for this player.")
+    
+    def render_ai_analysis_tab(self, player_data):
+        """Render AI analysis tab."""
+        st.markdown("### AI Grading Analysis")
+        
+        explanation = player_data.get('AI_Explanation', 'No analysis available.')
+        st.markdown(f'<div class="ai-explanation">{explanation}</div>', unsafe_allow_html=True)
+    
+    def render_ranking_plots_tab(self, player_data, position_data):
+        """Render ranking plots and comparisons."""
+        st.markdown("### Position Rankings & Comparisons")
+        
+        player_grade = player_data.get('AI_Grade', 0)
+        player_rank = player_data.get('AI_Rank', 0)
+        position = player_data.get('Position', 'UNKNOWN')
+        
+        # Grade distribution plot
+        fig = go.Figure()
+        
+        # Add histogram of all players in position
+        fig.add_trace(go.Histogram(
+            x=position_data['AI_Grade'],
+            nbinsx=20,
+            name=f'All {position} Players',
+            opacity=0.7,
+            marker_color=self.colors.get(position, '#666666')
+        ))
+        
+        # Add vertical line for current player
+        fig.add_vline(
+            x=player_grade,
+            line_dash="dash",
+            line_color="red",
+            annotation_text=f"{player_data['Player_Name']}: {player_grade:.1f}",
+            annotation_position="top"
+        )
+        
+        fig.update_layout(
+            title=f"{position} AI Grade Distribution",
+            xaxis_title="AI Grade",
+            yaxis_title="Number of Players",
+            showlegend=False,
+            height=400
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Position comparison
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric(
+                "Players Ranked Higher", 
+                player_rank - 1 if player_rank > 0 else 0
+            )
+        
+        with col2:
+            st.metric(
+                "Players Ranked Lower", 
+                len(position_data) - player_rank if player_rank > 0 else len(position_data)
+            )
+        
+        # Top performers comparison
+        st.markdown("#### Top 10 Players in Position")
+        top_10 = position_data.nlargest(10, 'AI_Grade')[['Player_Name', 'AI_Grade', 'AI_Rank']]
+        
+        # Highlight current player if in top 10
+        def highlight_player(row):
+            if row['Player_Name'] == player_data['Player_Name']:
+                return ['background-color: #FFD700; color: black'] * len(row)
+            return [''] * len(row)
+        
+        styled_df = top_10.style.apply(highlight_player, axis=1)
+        st.dataframe(styled_df, hide_index=True, width='stretch')
 
 # Initialize session state
 if 'data_loaded' not in st.session_state:
@@ -333,7 +562,7 @@ analyzer = SimpleFantasyAnalyzer()
 uploaded_file = st.file_uploader(
     "Upload Fantasy Football Excel File",
     type=['xlsx', 'xls'],
-    help="Upload your Excel file with QB, RBs, WR, TE, K, DEF sheets"
+    help="Upload your Excel file with fantasy player data"
 )
 
 if uploaded_file is not None:
@@ -451,14 +680,17 @@ if st.session_state.data_loaded and not st.session_state.players_data.empty:
         # Display selected player details
         if 'selected_player' in st.session_state:
             st.markdown("---")
-            st.markdown("### 📊 Player Analysis")
             
             # Get all numeric columns for stats display
             numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
             # Remove our added columns
             numeric_cols = [col for col in numeric_cols if col not in ['AI_Grade', 'AI_Rank']]
             
-            analyzer.render_player_modal(st.session_state.selected_player, numeric_cols)
+            # Get position data for comparisons
+            player_position = st.session_state.selected_player['Position']
+            position_data = data[data['Position'] == player_position]
+            
+            analyzer.render_player_modal(st.session_state.selected_player, numeric_cols, position_data)
 
 else:
     # Welcome message
@@ -466,8 +698,8 @@ else:
     <div style="text-align: center; padding: 3rem;">
         <h3>Welcome to Fantasy Football 2025 Analytics</h3>
         <p>Upload your Excel file with player data to get started!</p>
-        <p><strong>Required sheets:</strong> QB, RBs, WR, TE, K, DEF</p>
-        <p><strong>Column Y should contain news for each player</strong></p>
+        <p><strong>The app will automatically detect sheets for:</strong> QB, RB/RBs, WR/WRs, TE/TEs, K/Kickers, DEF/Defense</p>
+        <p><strong>News will be extracted from available columns</strong></p>
     </div>
     """, unsafe_allow_html=True)
 
