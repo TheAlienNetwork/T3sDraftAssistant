@@ -2445,11 +2445,11 @@ elif st.session_state.current_page == 'Draft':
 
         elif st.session_state.draft_completed:
             # Draft completed - show results and AI grading
-            self.display_draft_results_and_grading()
+            st.session_state.draft_simulator.display_draft_results_and_grading()
 
         else:
             # Active draft phase
-            self.run_real_time_draft()
+            st.session_state.draft_simulator.run_real_time_draft()
 
 # Auto-refresh for real-time draft
 if st.session_state.get('draft_in_progress', False) and not st.session_state.get('draft_completed', False):
