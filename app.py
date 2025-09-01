@@ -856,9 +856,72 @@ class AdvancedFantasyAnalyzer:
 
     def render_player_modal(self, player_data, all_data):
         """Render detailed player analysis modal."""
+        # Get player name details
+        first_name = player_data.get('First_Name', '').strip()
+        last_name = player_data.get('Last_Name', '').strip()
+        full_name = f"{first_name} {last_name}".strip() or player_data.get('Player_Name', 'Unknown')
+        
+        # Prominent VBD Analysis at the very top
+        st.markdown('<div class="vbd-analysis-container">', unsafe_allow_html=True)
+        st.markdown(f"### 📊 Value Based Drafting Analysis - {full_name}")
+        
+        # Show first and last name prominently
+        name_col1, name_col2, name_col3 = st.columns([1, 1, 2])
+        with name_col1:
+            if first_name:
+                st.markdown(f"**First Name:** {first_name}")
+        with name_col2:
+            if last_name:
+                st.markdown(f"**Last Name:** {last_name}")
+        with name_col3:
+            team = player_data.get('Team', 'Unknown Team')
+            st.markdown(f"**Team:** {team}")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown("#### 🎯 VBD Metrics")
+            vbd_value = player_data.get('VBD_Value', 0)
+            predicted_vbd = player_data.get('Predicted_VBD', vbd_value)
+            value_pick = player_data.get('Value_Pick', False)
+
+            st.metric("VBD Score", f"{vbd_value:.1f}")
+            st.metric("AI Predicted VBD", f"{predicted_vbd:.1f}")
+            st.metric("Value Differential", f"{vbd_value - predicted_vbd:.1f}")
+
+            if value_pick:
+                st.success("💎 **VALUE PICK ALERT**: This player may outperform their current ranking!")
+
+        with col2:
+            st.markdown("#### 📈 VBD Explanation")
+            st.markdown("""
+            **Value Based Drafting (VBD)** measures how much better a player is compared to a 
+            replacement-level player at the same position.
+
+            **Key Points:**
+            - Higher VBD = More valuable pick
+            - Considers positional scarcity
+            - Accounts for draft opportunity cost
+            - AI-enhanced for accuracy
+            """)
+
+        with col3:
+            # Points breakdown if available
+            if 'Points' in player_data and player_data['Points'] > 0:
+                st.markdown("#### 🏈 Fantasy Points Projection")
+                points = player_data.get('Points', 0)
+                st.metric("Projected Fantasy Points", f"{points:.1f}")
+            
+            # Team and bye week info
+            bye_week = player_data.get('Bye_Week', 0)
+            st.metric("Bye Week", f"Week {bye_week}" if bye_week > 0 else "TBD")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Player basic info below VBD
         st.markdown(f"""
         <div class="advanced-card">
-            <h2 style="margin-bottom: 1rem;">🏈 {player_data['Player_Name']} ({player_data.get('Team', 'Unknown Team')})</h2>
+            <h2 style="margin-bottom: 1rem;">🏈 Player Overview</h2>
         </div>
         """, unsafe_allow_html=True)
 
@@ -899,53 +962,6 @@ class AdvancedFantasyAnalyzer:
 
             st.markdown(f'<div class="draft-round-badge {round_class}">{draft_round}</div>', 
                        unsafe_allow_html=True)
-
-        # Prominent VBD Analysis at the top
-        st.markdown('<div class="vbd-analysis-container">', unsafe_allow_html=True)
-        st.markdown("### 📊 Value Based Drafting Analysis")
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.markdown("#### 🎯 VBD Metrics")
-            vbd_value = player_data.get('VBD_Value', 0)
-            predicted_vbd = player_data.get('Predicted_VBD', vbd_value)
-            value_pick = player_data.get('Value_Pick', False)
-
-            st.metric("VBD Score", f"{vbd_value:.1f}")
-            st.metric("AI Predicted VBD", f"{predicted_vbd:.1f}")
-            st.metric("Value Differential", f"{vbd_value - predicted_vbd:.1f}")
-
-            if value_pick:
-                st.success("💎 **VALUE PICK ALERT**: This player may outperform their current ranking!")
-
-        with col2:
-            st.markdown("#### 📈 VBD Explanation")
-            st.markdown("""
-            **Value Based Drafting (VBD)** measures how much better a player is compared to a 
-            replacement-level player at the same position.
-
-            **Key Points:**
-            - Higher VBD = More valuable pick
-            - Considers positional scarcity
-            - Accounts for draft opportunity cost
-            - AI-enhanced for accuracy
-            """)
-
-        with col3:
-            # Points breakdown if available
-            if 'Points' in player_data and player_data['Points'] > 0:
-                st.markdown("#### 🏈 Fantasy Points Projection")
-                points = player_data.get('Points', 0)
-                st.metric("Projected Fantasy Points", f"{points:.1f}")
-            
-            # Team and bye week info
-            team = player_data.get('Team', 'Unknown')
-            bye_week = player_data.get('Bye_Week', 0)
-            st.metric("Team", team)
-            st.metric("Bye Week", f"Week {bye_week}" if bye_week > 0 else "TBD")
-
-        st.markdown('</div>', unsafe_allow_html=True)
 
         # Tabs for detailed analysis
         tab1, tab2, tab3 = st.tabs(["📰 News & Intel", "🤖 AI Insights", "📈 Comparison"])
@@ -1058,6 +1074,10 @@ class DraftSimulator:
 
     def ai_draft_pick(self, team_index: int, available_players: pd.DataFrame) -> dict:
         """AI logic for drafting players."""
+        # Fix IndexError by ensuring team_index is within bounds
+        if team_index < 0 or team_index >= len(self.ai_teams):
+            return None
+            
         team_roster = self.ai_teams[team_index]
         
         # Count positions on roster
@@ -1149,12 +1169,17 @@ class DraftSimulator:
             else:
                 # AI pick
                 if len(available_players) > 0:
-                    ai_pick = self.ai_draft_pick(team_index - 1 if team_index > 0 else 9, available_players)
+                    # Fix the team index calculation
+                    ai_team_index = team_index if team_index > 0 else 0
+                    if ai_team_index >= len(self.ai_teams):
+                        ai_team_index = len(self.ai_teams) - 1
+                        
+                    ai_pick = self.ai_draft_pick(ai_team_index, available_players)
                     if ai_pick:
                         draft_results.append({
                             'pick': pick_num,
                             'round': ((pick_num - 1) // 10) + 1,
-                            'team': f"Team {team_index + 1}" if team_index < 9 else "Your Team",
+                            'team': f"Team {team_index + 1}" if team_index != 0 else "Your Team",
                             'player': ai_pick['Player_Name'],
                             'position': ai_pick['Position'],
                             'team_name': ai_pick.get('Team', 'Unknown'),
@@ -1171,7 +1196,7 @@ class DraftSimulator:
                         if team_index == 0:
                             self.user_team.append(ai_pick)
                         else:
-                            self.ai_teams[team_index - 1].append(ai_pick)
+                            self.ai_teams[ai_team_index].append(ai_pick)
 
         return draft_results
 
@@ -1345,6 +1370,10 @@ if st.session_state.current_page == 'Rankings':
                         
                         if st.button(f"🏈 {display_name}", key=f"player_{idx}", use_container_width=True):
                             st.session_state.selected_player = player
+                        
+                        # Display first and last name separately below the button
+                        if first_name or last_name:
+                            st.markdown(f"<small style='color: rgba(255,255,255,0.7);'>{first_name} | {last_name}</small>", unsafe_allow_html=True)
 
                     with col_team:
                         team = player.get('Team', 'UNK')
